@@ -67,7 +67,7 @@ export function WarehouseSwitcher({
   }
 
   return (
-    <SidebarMenu>
+    <SidebarMenu className="mt-4">
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

@@ -2,11 +2,9 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ChevronRight } from "lucide-react"
-import { IconPlus, IconBell } from "@tabler/icons-react"
+import { IconPlus } from "@tabler/icons-react"
 import type { Icon } from "@tabler/icons-react"
 import { useSession } from "next-auth/react"
-import { motion, type Variants } from "framer-motion"
-import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -77,77 +75,6 @@ const PERMISSIONS = {
   CREATE_ITEMS: "CREATE_ITEMS",
 } as const
 
-// Animation variants
-const itemVariants: Variants = {
-  hover: {
-    x: 4,
-    transition: { 
-      duration: 0.2,
-      ease: [0.4, 0.0, 0.2, 1]
-    }
-  },
-  tap: {
-    scale: 0.98,
-    transition: { 
-      duration: 0.1,
-      ease: [0.4, 0.0, 0.2, 1]
-    }
-  }
-}
-
-const subMenuVariants: Variants = {
-  closed: { 
-    opacity: 0, 
-    height: 0,
-    transition: { 
-      duration: 0.25,
-      ease: [0.4, 0.0, 0.2, 1]
-    }
-  },
-  open: { 
-    opacity: 1, 
-    height: "auto",
-    transition: { 
-      duration: 0.3,
-      ease: [0.4, 0.0, 0.2, 1],
-      staggerChildren: 0.05
-    }
-  }
-}
-
-const subItemVariants: Variants = {
-  closed: { 
-    opacity: 0, 
-    y: -5,
-    transition: { duration: 0.15 }
-  },
-  open: { 
-    opacity: 1, 
-    y: 0,
-    transition: { 
-      duration: 0.2,
-      ease: [0.4, 0.0, 0.2, 1]
-    }
-  }
-}
-
-const chevronVariants: Variants = {
-  closed: { 
-    rotate: 0,
-    transition: { 
-      duration: 0.2,
-      ease: [0.4, 0.0, 0.2, 1]
-    }
-  },
-  open: { 
-    rotate: 90,
-    transition: { 
-      duration: 0.2,
-      ease: [0.4, 0.0, 0.2, 1]
-    }
-  }
-}
-
 export function NavMain({ items }: NavMainProps) {
   const pathname = usePathname()
   const { data: session } = useSession() as { data: CustomSession | null }
@@ -192,23 +119,17 @@ export function NavMain({ items }: NavMainProps) {
       <SidebarGroupContent className="flex flex-col gap-2">
         {/* Quick Actions Section */}
         <SidebarMenu>
-          <SidebarMenuItem className="flex items-center gap-2">
+          <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <motion.div
-                  whileHover="hover"
-                  whileTap="tap"
-                  variants={itemVariants}
+                <SidebarMenuButton
+                  tooltip="Quick Create"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+                  disabled={quickCreateOptions.length === 0}
                 >
-                  <SidebarMenuButton
-                    tooltip="Quick Create"
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground min-w-8 duration-200 ease-linear"
-                    disabled={quickCreateOptions.length === 0}
-                  >
-                    <IconPlus />
-                    <span>Quick Create</span>
-                  </SidebarMenuButton>
-                </motion.div>
+                  <IconPlus />
+                  <span className="group-data-[collapsible=icon]:hidden">Quick Create</span>
+                </SidebarMenuButton>
               </DropdownMenuTrigger>
               {quickCreateOptions.length > 0 && (
                 <DropdownMenuContent align="start" className="w-64">
@@ -227,24 +148,6 @@ export function NavMain({ items }: NavMainProps) {
                 </DropdownMenuContent>
               )}
             </DropdownMenu>
-            
-            <motion.div
-              whileHover="hover"
-              whileTap="tap"
-              variants={itemVariants}
-            >
-              <Button
-                size="icon"
-                className="size-8 group-data-[collapsible=icon]:opacity-0"
-                variant="outline"
-                asChild
-              >
-                <Link href="/dashboard/notifications">
-                  <IconBell />
-                  <span className="sr-only">Notifications</span>
-                </Link>
-              </Button>
-            </motion.div>
           </SidebarMenuItem>
         </SidebarMenu>
         
@@ -264,54 +167,24 @@ export function NavMain({ items }: NavMainProps) {
                 >
                   <SidebarMenuItem>
                     <CollapsibleTrigger asChild>
-                      <motion.div
-                        whileHover="hover"
-                        whileTap="tap"
-                        variants={itemVariants}
-                      >
-                        <SidebarMenuButton tooltip={item.title} isActive={isActive}>
-                          {item.icon && <item.icon className="size-4" />}
-                          <span>{item.title}</span>
-                          <motion.div
-                            variants={chevronVariants}
-                            animate={isActive ? "open" : "closed"}
-                            className="ml-auto"
-                          >
-                            <ChevronRight className="size-4" />
-                          </motion.div>
-                        </SidebarMenuButton>
-                      </motion.div>
+                      <SidebarMenuButton tooltip={item.title} isActive={isActive}>
+                        {item.icon && <item.icon className="size-4" />}
+                        <span>{item.title}</span>
+                        <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      </SidebarMenuButton>
                     </CollapsibleTrigger>
-                    <CollapsibleContent asChild>
-                      <motion.div
-                        initial="closed"
-                        animate="open"
-                        exit="closed"
-                        variants={subMenuVariants}
-                      >
-                        <SidebarMenuSub>
-                          {item.items.map((subItem) => (
-                            <motion.div
-                              key={subItem.title}
-                              variants={subItemVariants}
-                            >
-                              <SidebarMenuSubItem>
-                                <motion.div
-                                  whileHover="hover"
-                                  whileTap="tap"
-                                  variants={itemVariants}
-                                >
-                                  <SidebarMenuSubButton asChild>
-                                    <Link href={subItem.url}>
-                                      <span>{subItem.title}</span>
-                                    </Link>
-                                  </SidebarMenuSubButton>
-                                </motion.div>
-                              </SidebarMenuSubItem>
-                            </motion.div>
-                          ))}
-                        </SidebarMenuSub>
-                      </motion.div>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {item.items.map((subItem) => (
+                          <SidebarMenuSubItem key={subItem.title}>
+                            <SidebarMenuSubButton asChild>
+                              <Link href={subItem.url}>
+                                <span>{subItem.title}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
                     </CollapsibleContent>
                   </SidebarMenuItem>
                 </Collapsible>
@@ -321,22 +194,12 @@ export function NavMain({ items }: NavMainProps) {
             // Regular menu item without subitems
             return (
               <SidebarMenuItem key={item.title}>
-                <motion.div
-                  whileHover="hover"
-                  whileTap="tap"
-                  variants={itemVariants}
-                >
-                  <SidebarMenuButton 
-                    tooltip={item.title}
-                    asChild
-                    isActive={isActive}
-                  >
-                    <Link href={item.url}>
-                      {item.icon && <item.icon className="size-4" />}
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </motion.div>
+                <SidebarMenuButton tooltip={item.title} asChild isActive={isActive}>
+                  <Link href={item.url}>
+                    {item.icon && <item.icon className="size-4" />}
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             )
           })}

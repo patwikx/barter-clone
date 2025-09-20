@@ -26,10 +26,10 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar"
 import { NavMain } from "./nav-main"
-import { NavDocuments } from "./nav-docs"
 import { NavSecondary } from "./nav-secondary"
 import { NavUser } from "./nav-user"
 import { WarehouseSwitcher } from "./team-switcher"
+import { NavDocuments } from "./nav-docs"
 
 
 // Types based on your Prisma schema
@@ -315,14 +315,14 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        {warehouses.length > 0 && (
+
           <WarehouseSwitcher
             warehouses={warehouses}
             currentWarehouseId={currentWarehouseId}
             onWarehouseChange={onWarehouseChange}
             canManageWarehouses={canManageWarehouses}
           />
-        )}
+   
       </SidebarHeader>
       
       <SidebarContent>

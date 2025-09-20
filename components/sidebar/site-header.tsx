@@ -1,24 +1,43 @@
 "use client"
 import { usePathname } from "next/navigation"
-import { useSession } from "next-auth/react"
-import { IconBell, IconSearch, IconRefresh } from "@tabler/icons-react"
+import { useState, useTransition, useEffect } from "react"
+import { IconBell, IconSearch, IconRefresh, IconClock } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { markNotificationAsRead, markAllNotificationsAsRead } from "@/lib/actions/notifs"
+import type { Notification } from "@/types/notifications"
+import { cn } from "@/lib/utils"
 
-export function SiteHeader() {
+interface SiteHeaderProps {
+  initialNotifications?: Notification[]
+}
+
+export function SiteHeader({ initialNotifications = [] }: SiteHeaderProps) {
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const [currentTime, setCurrentTime] = useState(new Date())
+
+  const unreadCount = notifications.filter(n => !n.isRead).length
+
+  // Update time every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [])
 
   // Get page title based on current path
   const getPageTitle = (path: string) => {
@@ -58,8 +77,46 @@ export function SiteHeader() {
 
   const pageTitle = getPageTitle(pathname)
 
-  // Mock notification count - in real app, this would come from an API
-  const notificationCount = 3
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    setIsRefreshing(false)
+  }
+
+  const handleMarkAsRead = (notificationId: string) => {
+    startTransition(async () => {
+      try {
+        await markNotificationAsRead(notificationId)
+        setNotifications(prev => 
+          prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
+        )
+      } catch (error) {
+        console.error('Failed to mark notification as read:', error)
+      }
+    })
+  }
+
+  const handleMarkAllAsRead = () => {
+    startTransition(async () => {
+      try {
+        await markAllNotificationsAsRead()
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      } catch (error) {
+        console.error('Failed to mark all notifications as read:', error)
+      }
+    })
+  }
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
+    
+    if (diffMinutes < 1) return 'now'
+    if (diffMinutes < 60) return `${diffMinutes}m`
+    if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}h`
+    return `${Math.floor(diffMinutes / 1440)}d`
+  }
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-16">
@@ -88,76 +145,120 @@ export function SiteHeader() {
 
         {/* Right side actions */}
         <div className="ml-auto flex items-center gap-2">
+          {/* System Time & Date */}
+          <div className="hidden lg:flex items-center gap-2 text-sm text-muted-foreground">
+            <IconClock className="size-4" />
+            <div className="text-right">
+              <span className="font-medium text-foreground">
+                {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              <span className="font-medium ml-2">
+                {currentTime.toLocaleDateString([], { 
+                  weekday: 'short', 
+                  month: 'short', 
+                  day: 'numeric' 
+                })}
+              </span>
+            </div>
+          </div>
+
+          <Separator orientation="vertical" className="hidden lg:block h-6" />
+
           {/* Refresh button for data-heavy pages */}
           {(pathname.includes('/inventory') || pathname.includes('/dashboard')) && (
-            <Button variant="ghost" size="sm">
-              <IconRefresh className="size-4" />
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+            >
+              <IconRefresh className={cn("size-4", isRefreshing && "animate-spin")} />
               <span className="sr-only">Refresh data</span>
             </Button>
           )}
 
           {/* Notifications */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <Popover>
+            <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="relative">
                 <IconBell className="size-4" />
-                {notificationCount > 0 && (
+                {unreadCount > 0 && (
                   <Badge 
                     className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 text-xs flex items-center justify-center bg-destructive text-destructive-foreground"
                   >
-                    {notificationCount}
+                    {unreadCount > 9 ? '9+' : unreadCount}
                   </Badge>
                 )}
                 <span className="sr-only">Notifications</span>
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
-              <DropdownMenuLabel className="flex items-center justify-between">
-                Notifications
-                <Badge variant="secondary" className="text-xs">
-                  {notificationCount} new
-                </Badge>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="flex flex-col items-start p-3">
-                <div className="font-medium text-sm">Low Stock Alert</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Steel Bolts (ITEM-001) is below reorder level
-                </div>
-                <div className="text-xs text-muted-foreground">2 hours ago</div>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex flex-col items-start p-3">
-                <div className="font-medium text-sm">Purchase Order Approved</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  PO-2024-004 has been approved by manager
-                </div>
-                <div className="text-xs text-muted-foreground">4 hours ago</div>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="flex flex-col items-start p-3">
-                <div className="font-medium text-sm">Transfer Completed</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  TRF-2024-002 from Main to Secondary warehouse
-                </div>
-                <div className="text-xs text-muted-foreground">1 day ago</div>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-center text-sm">
-                View all notifications
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* User info display */}
-          {session?.user && (
-            <div className="hidden md:flex items-center gap-2 text-sm">
-              <div className="text-right">
-                <div className="font-medium">{session.user.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {session.user.role?.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
-                </div>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-0">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b">
+                <h3 className="font-semibold">Notifications</h3>
+                {unreadCount > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={handleMarkAllAsRead}
+                    disabled={isPending}
+                    className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Mark all read
+                  </Button>
+                )}
               </div>
-            </div>
-          )}
+              
+              {/* Content */}
+              <ScrollArea className="max-h-80">
+                {notifications.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <IconBell className="mx-auto h-8 w-8 text-muted-foreground/50" />
+                    <p className="mt-2 text-sm text-muted-foreground">No notifications</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {notifications.slice(0, 10).map((notification) => (
+                      <div 
+                        key={notification.id}
+                        className={cn(
+                          "group cursor-pointer p-4 hover:bg-muted/50",
+                          !notification.isRead && "bg-muted/30"
+                        )}
+                        onClick={() => handleMarkAsRead(notification.id)}
+                      >
+                        <div className="flex gap-3">
+                          <div className={cn(
+                            "mt-1.5 h-2 w-2 rounded-full",
+                            !notification.isRead ? "bg-primary" : "bg-muted-foreground/30"
+                          )} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground">
+                              {notification.title}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                              {notification.message}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {formatTimeAgo(notification.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+              
+              {notifications.length > 10 && (
+                <div className="border-t p-2">
+                  <Button variant="ghost" size="sm" className="w-full text-xs">
+                    View all notifications
+                  </Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </header>

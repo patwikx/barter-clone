@@ -24,19 +24,19 @@ interface NavSecondaryProps {
 
 export function NavSecondary({ items, className }: NavSecondaryProps) {
   const pathname = usePathname()
-
+ 
   return (
     <SidebarGroup className={className}>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
             const isActive = pathname === item.url || pathname.startsWith(item.url + "/")
-            
+           
             return (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton 
-                  tooltip={item.title} 
-                  size="sm" 
+                <SidebarMenuButton
+                  tooltip={item.title}
+                  size="sm"
                   asChild
                   isActive={isActive}
                 >

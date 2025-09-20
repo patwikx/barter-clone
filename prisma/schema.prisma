@@ -39,6 +39,7 @@ model Session {
   @@map("sessions")
 }
 
+// Updated User model with warehouse relations
 model User {
   id           String  @id @default(uuid())
   email        String? @unique
@@ -58,10 +59,16 @@ model User {
   lastLoginAt DateTime?
 
   // Security and permissions
-  role        UserRole         @default(USER)
-  permissions UserPermission[]
+  role          UserRole         @default(USER)
+  permissions   UserPermission[]
+  notifications Notification[]
 
-  // Relationships for audit trails
+  // NEW: Warehouse associations
+  assignedWarehouses UserWarehouse[]
+  defaultWarehouse   Warehouse?      @relation("DefaultWarehouse", fields: [defaultWarehouseId], references: [id])
+  defaultWarehouseId String?
+
+  // Existing relationships for audit trails
   accounts             Account[]
   sessions             Session[]
   purchasesCreated     Purchase[]            @relation("PurchaseCreatedBy")
@@ -177,6 +184,10 @@ model Warehouse {
   costVariances      CostVariance[]
   currentInventory   CurrentInventory[]
   adjustments        InventoryAdjustment[]
+
+  // NEW: User-Warehouse relationships
+  assignedUsers   UserWarehouse[]
+  defaultForUsers User[]          @relation("DefaultWarehouse")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -706,4 +717,50 @@ enum AdjustmentType {
   FOUND
   CORRECTION
   REVALUATION
+}
+
+model Notification {
+  id            String           @id @default(uuid())
+  title         String
+  message       String
+  type          NotificationType @default(INFO)
+  isRead        Boolean          @default(false)
+  referenceId   String? // ID of related entity (item, purchase, etc.)
+  referenceType String? // Type of related entity (ITEM, PURCHASE, TRANSFER, etc.)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// Add this enum to your existing enums section
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+model UserWarehouse {
+  id          String        @id @default(uuid())
+  user        User          @relation(fields: [userId], references: [id])
+  userId      String
+  warehouse   Warehouse     @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+  role        WarehouseRole // MANAGER, CLERK, VIEWER
+
+  @@unique([userId, warehouseId])
+}
+
+enum WarehouseRole {
+  MANAGER
+  SUPERVISOR
+  CLERK
+  VIEWER
 }
