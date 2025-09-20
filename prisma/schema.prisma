@@ -1,0 +1,709 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // or "mysql", "sqlite", etc.
+  url      = env("DATABASE_URL")
+}
+
+// NextAuth.js Models
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model User {
+  id           String  @id @default(uuid())
+  email        String? @unique
+  username     String  @unique
+  passwordHash String
+
+  imageUrl String?
+
+  // Additional user profile fields
+  firstName   String?
+  lastName    String?
+  employeeId  String?   @unique
+  department  String?
+  position    String?
+  phone       String?
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+
+  // Security and permissions
+  role        UserRole         @default(USER)
+  permissions UserPermission[]
+
+  // Relationships for audit trails
+  accounts             Account[]
+  sessions             Session[]
+  purchasesCreated     Purchase[]            @relation("PurchaseCreatedBy")
+  purchasesApproved    Purchase[]            @relation("PurchaseApprovedBy")
+  transfersCreated     Transfer[]            @relation("TransferCreatedBy")
+  transfersApproved    Transfer[]            @relation("TransferApprovedBy")
+  withdrawalsRequested Withdrawal[]          @relation("WithdrawalRequestedBy")
+  withdrawalsApproved  Withdrawal[]          @relation("WithdrawalApprovedBy")
+  inventoryAdjustments InventoryAdjustment[]
+  auditLogs            AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// User Permission System
+model UserPermission {
+  id         String     @id @default(uuid())
+  permission Permission
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  grantedBy String?
+  grantedAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  @@unique([userId, permission])
+  @@map("user_permissions")
+}
+
+// Core Item Management
+model Item {
+  id            String  @id @default(uuid())
+  itemCode      String  @unique
+  description   String
+  unitOfMeasure String
+  standardCost  Decimal @db.Decimal(10, 6) // Higher precision for cost calculations
+
+  // Cost accounting settings
+  costingMethod CostingMethodType @default(WEIGHTED_AVERAGE)
+  reorderLevel  Decimal?          @db.Decimal(10, 4)
+  maxLevel      Decimal?          @db.Decimal(10, 4)
+  minLevel      Decimal?          @db.Decimal(10, 4)
+
+  // Relationships
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  supplierId String
+
+  // Inventory tracking
+  purchaseItems      PurchaseItem[]
+  inventoryMovements InventoryMovement[]
+  withdrawalItems    WithdrawalItem[]
+  transferItems      TransferItem[]
+  costLayers         CostLayer[]
+  monthlyAverages    MonthlyWeightedAverage[]
+  costingMethods     CostingMethod[]
+  costVariances      CostVariance[]
+  currentInventory   CurrentInventory[]
+  adjustmentItems    InventoryAdjustmentItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("items")
+}
+
+model Supplier {
+  id                String  @id @default(uuid())
+  name              String
+  contactInfo       String?
+  purchaseReference String?
+
+  items     Item[]
+  purchases Purchase[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("suppliers")
+}
+
+// Warehouse/Location Management
+model Warehouse {
+  id              String  @id @default(uuid())
+  name            String
+  location        String?
+  description     String?
+  isMainWarehouse Boolean @default(false)
+
+  // Cost accounting settings
+  defaultCostingMethod CostingMethodType @default(WEIGHTED_AVERAGE)
+
+  // Inventory at this location
+  inventoryMovements InventoryMovement[]
+  withdrawals        Withdrawal[]
+  transfersFrom      Transfer[]               @relation("TransferFrom")
+  transfersTo        Transfer[]               @relation("TransferTo")
+  costLayers         CostLayer[]
+  monthlyAverages    MonthlyWeightedAverage[]
+  costingMethods     CostingMethod[]
+  costVariances      CostVariance[]
+  currentInventory   CurrentInventory[]
+  adjustments        InventoryAdjustment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("warehouses")
+}
+
+// Purchase Management
+model Purchase {
+  id            String         @id @default(uuid())
+  purchaseOrder String         @unique
+  purchaseDate  DateTime       @default(now())
+  totalCost     Decimal        @db.Decimal(12, 2)
+  status        PurchaseStatus @default(PENDING)
+
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  supplierId String
+
+  // User tracking for audit
+  createdBy    User      @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
+  createdById  String
+  approvedBy   User?     @relation("PurchaseApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
+  approvedAt   DateTime?
+
+  purchaseItems PurchaseItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id        String  @id @default(uuid())
+  quantity  Decimal @db.Decimal(10, 4)
+  unitCost  Decimal @db.Decimal(10, 4)
+  totalCost Decimal @db.Decimal(12, 2)
+
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  purchaseId String
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  createdAt DateTime @default(now())
+
+  @@map("purchase_items")
+}
+
+// Inventory Movement Tracking
+model InventoryMovement {
+  id           String       @id @default(uuid())
+  movementType MovementType
+  quantity     Decimal      @db.Decimal(10, 4)
+  unitCost     Decimal?     @db.Decimal(10, 6) // Higher precision
+  totalValue   Decimal?     @db.Decimal(12, 2)
+  referenceId  String? // Reference to purchase, transfer, or withdrawal
+  notes        String?
+
+  // Cost accounting details
+  weightedAvgCostBefore Decimal?          @db.Decimal(10, 6)
+  weightedAvgCostAfter  Decimal?          @db.Decimal(10, 6)
+  costMethod            CostingMethodType @default(WEIGHTED_AVERAGE)
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+
+  // Running balance after this movement
+  balanceQuantity Decimal @db.Decimal(10, 4)
+  balanceValue    Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([itemId, warehouseId, createdAt])
+  @@map("inventory_movements")
+}
+
+// Transfer Management (Warehouse to Warehouse)
+model Transfer {
+  id             String         @id @default(uuid())
+  transferNumber String         @unique
+  transferDate   DateTime       @default(now())
+  status         TransferStatus @default(PENDING)
+  notes          String?
+
+  fromWarehouse   Warehouse @relation("TransferFrom", fields: [fromWarehouseId], references: [id])
+  fromWarehouseId String
+
+  toWarehouse   Warehouse @relation("TransferTo", fields: [toWarehouseId], references: [id])
+  toWarehouseId String
+
+  // User tracking for audit
+  createdBy    User      @relation("TransferCreatedBy", fields: [createdById], references: [id])
+  createdById  String
+  approvedBy   User?     @relation("TransferApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
+  approvedAt   DateTime?
+
+  transferItems TransferItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("transfers")
+}
+
+model TransferItem {
+  id       String  @id @default(uuid())
+  quantity Decimal @db.Decimal(10, 4)
+
+  transfer   Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  transferId String
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  createdAt DateTime @default(now())
+
+  @@map("transfer_items")
+}
+
+// Withdrawal/Issuance Management
+model Withdrawal {
+  id               String           @id @default(uuid())
+  withdrawalNumber String           @unique
+  withdrawalDate   DateTime         @default(now())
+  purpose          String?
+  status           WithdrawalStatus @default(PENDING)
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+
+  // User tracking for audit
+  requestedBy   User      @relation("WithdrawalRequestedBy", fields: [requestedById], references: [id])
+  requestedById String
+  approvedBy    User?     @relation("WithdrawalApprovedBy", fields: [approvedById], references: [id])
+  approvedById  String?
+  approvedAt    DateTime?
+
+  withdrawalItems WithdrawalItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("withdrawals")
+}
+
+model WithdrawalItem {
+  id         String  @id @default(uuid())
+  quantity   Decimal @db.Decimal(10, 4)
+  unitCost   Decimal @db.Decimal(10, 4)
+  totalValue Decimal @db.Decimal(12, 2)
+
+  withdrawal   Withdrawal @relation(fields: [withdrawalId], references: [id], onDelete: Cascade)
+  withdrawalId String
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  createdAt DateTime @default(now())
+
+  @@map("withdrawal_items")
+}
+
+// Current Inventory View (for quick lookups)
+model CurrentInventory {
+  id          String  @id @default(uuid())
+  quantity    Decimal @db.Decimal(10, 4)
+  totalValue  Decimal @db.Decimal(12, 2)
+  avgUnitCost Decimal @db.Decimal(10, 4)
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+
+  lastUpdated DateTime @updatedAt
+
+  @@unique([itemId, warehouseId])
+  @@map("current_inventory")
+}
+
+// Detailed Cost Accounting
+model CostLayer {
+  id           String        @id @default(uuid())
+  quantity     Decimal       @db.Decimal(10, 4)
+  remainingQty Decimal       @db.Decimal(10, 4)
+  unitCost     Decimal       @db.Decimal(10, 6) // Higher precision for cost calculations
+  totalCost    Decimal       @db.Decimal(12, 2)
+  layerDate    DateTime
+  layerType    CostLayerType
+  sourceRef    String? // Reference to purchase, adjustment, etc.
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+
+  // Cost allocations from this layer
+  costAllocations CostAllocation[]
+
+  createdAt DateTime @default(now())
+
+  @@index([itemId, warehouseId, layerDate])
+  @@map("cost_layers")
+}
+
+model CostAllocation {
+  id             String          @id @default(uuid())
+  allocatedQty   Decimal         @db.Decimal(10, 4)
+  allocatedCost  Decimal         @db.Decimal(12, 2)
+  allocationDate DateTime
+  allocationType AlllocationType
+  referenceId    String // Reference to withdrawal, transfer, etc.
+
+  costLayer   CostLayer @relation(fields: [costLayerId], references: [id])
+  costLayerId String
+
+  createdAt DateTime @default(now())
+
+  @@map("cost_allocations")
+}
+
+// Monthly Weighted Average Tracking
+model MonthlyWeightedAverage {
+  id              String  @id @default(uuid())
+  year            Int
+  month           Int
+  weightedAvgCost Decimal @db.Decimal(10, 6)
+  totalQuantity   Decimal @db.Decimal(12, 4)
+  totalValue      Decimal @db.Decimal(15, 2)
+  openingQuantity Decimal @db.Decimal(12, 4)
+  openingValue    Decimal @db.Decimal(15, 2)
+  closingQuantity Decimal @db.Decimal(12, 4)
+  closingValue    Decimal @db.Decimal(15, 2)
+
+  // Monthly movements summary
+  purchaseQuantity    Decimal @default(0) @db.Decimal(12, 4)
+  purchaseValue       Decimal @default(0) @db.Decimal(15, 2)
+  withdrawalQuantity  Decimal @default(0) @db.Decimal(12, 4)
+  withdrawalValue     Decimal @default(0) @db.Decimal(15, 2)
+  transferInQuantity  Decimal @default(0) @db.Decimal(12, 4)
+  transferInValue     Decimal @default(0) @db.Decimal(15, 2)
+  transferOutQuantity Decimal @default(0) @db.Decimal(12, 4)
+  transferOutValue    Decimal @default(0) @db.Decimal(15, 2)
+  adjustmentQuantity  Decimal @default(0) @db.Decimal(12, 4)
+  adjustmentValue     Decimal @default(0) @db.Decimal(15, 2)
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([itemId, warehouseId, year, month])
+  @@index([year, month])
+  @@map("monthly_weighted_averages")
+}
+
+// Comprehensive Audit Logging
+model AuditLog {
+  id            String      @id @default(uuid())
+  tableName     String
+  recordId      String
+  action        AuditAction
+  oldValues     Json?
+  newValues     Json?
+  changedFields String[] // Array of field names that changed
+
+  // User context information
+  user      User?   @relation(fields: [userId], references: [id])
+  userId    String?
+  userEmail String?
+  sessionId String?
+  ipAddress String?
+  userAgent String?
+
+  // Business context
+  transactionType String? // PURCHASE, TRANSFER, WITHDRAWAL, etc.
+  referenceNumber String? // PO number, transfer number, etc.
+  notes           String?
+
+  timestamp DateTime @default(now())
+
+  @@index([tableName, recordId])
+  @@index([userId, timestamp])
+  @@index([transactionType, timestamp])
+  @@map("audit_logs")
+}
+
+// Cost Method Configuration
+model CostingMethod {
+  id            String            @id @default(uuid())
+  method        CostingMethodType @default(WEIGHTED_AVERAGE)
+  isActive      Boolean           @default(true)
+  effectiveDate DateTime          @default(now())
+
+  item   Item?   @relation(fields: [itemId], references: [id])
+  itemId String?
+
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
+  warehouseId String?
+
+  // If both itemId and warehouseId are null, this is the global default
+
+  createdAt DateTime @default(now())
+
+  @@index([itemId, warehouseId, effectiveDate])
+  @@map("costing_methods")
+}
+
+// Inventory Adjustment (New model for manual adjustments)
+model InventoryAdjustment {
+  id               String         @id @default(uuid())
+  adjustmentNumber String         @unique
+  adjustmentType   AdjustmentType
+  reason           String
+  notes            String?
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+
+  // User tracking
+  adjustedBy   User     @relation(fields: [adjustedById], references: [id])
+  adjustedById String
+  adjustedAt   DateTime @default(now())
+
+  adjustmentItems InventoryAdjustmentItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("inventory_adjustments")
+}
+
+model InventoryAdjustmentItem {
+  id                 String  @id @default(uuid())
+  systemQuantity     Decimal @db.Decimal(10, 4) // What system shows
+  actualQuantity     Decimal @db.Decimal(10, 4) // What was counted
+  adjustmentQuantity Decimal @db.Decimal(10, 4) // Difference
+  unitCost           Decimal @db.Decimal(10, 6)
+  totalAdjustment    Decimal @db.Decimal(12, 2)
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  adjustment   InventoryAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  adjustmentId String
+
+  createdAt DateTime @default(now())
+
+  @@map("inventory_adjustment_items")
+}
+
+model CostVariance {
+  id              String       @id @default(uuid())
+  varianceType    VarianceType
+  standardCost    Decimal      @db.Decimal(10, 6)
+  actualCost      Decimal      @db.Decimal(10, 6)
+  varianceAmount  Decimal      @db.Decimal(10, 6)
+  variancePercent Decimal      @db.Decimal(5, 2)
+  quantity        Decimal      @db.Decimal(10, 4)
+  totalVariance   Decimal      @db.Decimal(12, 2)
+
+  // Reference information
+  referenceType   String // PURCHASE, PRODUCTION, etc.
+  referenceId     String
+  referenceNumber String?
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+
+  analyzedDate DateTime @default(now())
+
+  @@index([itemId, warehouseId, analyzedDate])
+  @@map("cost_variances")
+}
+
+// Enums
+enum PurchaseStatus {
+  PENDING
+  RECEIVED
+  PARTIALLY_RECEIVED
+  CANCELLED
+}
+
+enum TransferStatus {
+  PENDING
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+  REJECTED
+}
+
+enum MovementType {
+  PURCHASE_RECEIPT
+  TRANSFER_IN
+  TRANSFER_OUT
+  WITHDRAWAL
+  ADJUSTMENT
+  OPENING_BALANCE
+  REVALUATION
+}
+
+enum CostingMethodType {
+  FIFO // First In, First Out
+  LIFO // Last In, First Out
+  WEIGHTED_AVERAGE // Weighted Average
+  MOVING_AVERAGE // Moving Average
+  STANDARD_COST // Standard Cost
+  SPECIFIC_IDENTIFICATION // Specific Item Identification
+}
+
+enum CostLayerType {
+  PURCHASE
+  ADJUSTMENT_POSITIVE
+  ADJUSTMENT_NEGATIVE
+  TRANSFER_IN
+  OPENING_BALANCE
+  REVALUATION
+}
+
+enum AlllocationType {
+  WITHDRAWAL
+  TRANSFER_OUT
+  ADJUSTMENT
+  CONSUMPTION
+  SHRINKAGE
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  IMPORT
+  APPROVE
+  REJECT
+}
+
+enum VarianceType {
+  PURCHASE_PRICE_VARIANCE
+  USAGE_VARIANCE
+  EFFICIENCY_VARIANCE
+  MATERIAL_VARIANCE
+  OVERHEAD_VARIANCE
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  WAREHOUSE_MANAGER
+  INVENTORY_CLERK
+  PURCHASER
+  APPROVER
+  USER
+  VIEWER
+}
+
+enum Permission {
+  // Item Management
+  CREATE_ITEMS
+  UPDATE_ITEMS
+  DELETE_ITEMS
+  VIEW_ITEMS
+
+  // Purchase Management
+  CREATE_PURCHASES
+  APPROVE_PURCHASES
+  VIEW_PURCHASES
+  CANCEL_PURCHASES
+
+  // Transfer Management
+  CREATE_TRANSFERS
+  APPROVE_TRANSFERS
+  VIEW_TRANSFERS
+  CANCEL_TRANSFERS
+
+  // Withdrawal Management
+  REQUEST_WITHDRAWALS
+  APPROVE_WITHDRAWALS
+  VIEW_WITHDRAWALS
+  CANCEL_WITHDRAWALS
+
+  // Inventory Management
+  ADJUST_INVENTORY
+  VIEW_INVENTORY
+  RECOUNT_INVENTORY
+
+  // Reporting
+  VIEW_REPORTS
+  EXPORT_REPORTS
+  VIEW_COST_REPORTS
+
+  // Administration
+  MANAGE_USERS
+  MANAGE_WAREHOUSES
+  MANAGE_SUPPLIERS
+  VIEW_AUDIT_LOGS
+  SYSTEM_SETTINGS
+}
+
+enum AdjustmentType {
+  PHYSICAL_COUNT
+  DAMAGE
+  SHRINKAGE
+  FOUND
+  CORRECTION
+  REVALUATION
+}
