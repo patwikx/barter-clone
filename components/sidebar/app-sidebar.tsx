@@ -156,7 +156,7 @@ export function AppSidebar({
         url: "/dashboard/purchases",
         icon: IconShoppingCart,
         items: [
-          { title: "Purchase Orders", url: "/dashboard/purchases/orders" },
+          { title: "Purchase Orders", url: "/dashboard/purchases" },
           { title: "Receipts", url: "/dashboard/purchases/receipts" },
           { title: "Pending Approvals", url: "/dashboard/purchases/approvals" }
         ]
@@ -217,7 +217,7 @@ export function AppSidebar({
     if (hasPermission(PERMISSIONS.MANAGE_WAREHOUSES)) {
       items.push({
         name: "Warehouses",
-        url: "/dashboard/warehouses",
+        url: "/dashboard/warehouse",
         icon: IconBuilding,
       })
     }
