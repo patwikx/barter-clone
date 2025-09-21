@@ -17,6 +17,7 @@ import {
   IconSearch,
   IconClipboardList,
   IconHistory,
+  IconMinus,
 } from "@tabler/icons-react"
 
 import {
@@ -157,8 +158,7 @@ export function AppSidebar({
         icon: IconShoppingCart,
         items: [
           { title: "Purchase Orders", url: "/dashboard/purchases" },
-          { title: "Receipts", url: "/dashboard/purchases/receipts" },
-          { title: "Pending Approvals", url: "/dashboard/purchases/approvals" }
+          { title: "Create Purchase", url: "/dashboard/purchases/create" }
         ]
       })
     }
@@ -169,8 +169,8 @@ export function AppSidebar({
         url: "/dashboard/transfers",
         icon: IconArrowsExchange,
         items: [
-          { title: "Active Transfers", url: "/dashboard/transfers/active" },
-          { title: "Transfer History", url: "/dashboard/transfers/history" }
+          { title: "All Transfers", url: "/dashboard/transfers" },
+          { title: "Create Transfer", url: "/dashboard/transfers/create" }
         ]
       })
     }
@@ -179,10 +179,10 @@ export function AppSidebar({
       items.push({
         title: "Withdrawals",
         url: "/dashboard/withdrawals",
-        icon: IconTruck,
+        icon: IconMinus,
         items: [
-          { title: "Pending Requests", url: "/dashboard/withdrawals/pending" },
-          { title: "Withdrawal History", url: "/dashboard/withdrawals/history" }
+          { title: "All Withdrawals", url: "/dashboard/withdrawals" },
+          { title: "Create Withdrawal", url: "/dashboard/withdrawals/create" }
         ]
       })
     }
@@ -254,6 +254,12 @@ export function AppSidebar({
       })
     }
 
+    items.push({
+      name: "Cost Accounting",
+      url: "/dashboard/cost-accounting",
+      icon: IconChartBar,
+    })
+
     return items
   }, [hasPermission])
 
@@ -272,7 +278,7 @@ export function AppSidebar({
         title: "Search",
         url: "/dashboard/search",
         icon: IconSearch,
-      }
+      },
     ]
 
     if (hasPermission(PERMISSIONS.SYSTEM_SETTINGS)) {
@@ -315,14 +321,12 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-
-          <WarehouseSwitcher
-            warehouses={warehouses}
-            currentWarehouseId={currentWarehouseId}
-            onWarehouseChange={onWarehouseChange}
-            canManageWarehouses={canManageWarehouses}
-          />
-   
+        <WarehouseSwitcher
+          warehouses={warehouses}
+          currentWarehouseId={currentWarehouseId}
+          onWarehouseChange={onWarehouseChange}
+          canManageWarehouses={canManageWarehouses}
+        />
       </SidebarHeader>
       
       <SidebarContent>

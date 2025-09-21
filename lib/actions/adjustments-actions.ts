@@ -261,10 +261,45 @@ export async function getInventoryAdjustments(
   }
 }
 
+// Get adjustment by ID
+export async function getAdjustmentById(adjustmentId: string): Promise<{
+  success: boolean
+  data?: AdjustmentWithDetails
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    const adjustment = await prisma.inventoryAdjustment.findUnique({
+      where: { id: adjustmentId },
+      include: adjustmentInclude
+    })
+
+    if (!adjustment) {
+      return { success: false, error: "Adjustment not found" }
+    }
+
+    return {
+      success: true,
+      data: transformAdjustment(adjustment)
+    }
+
+  } catch (error) {
+    console.error('Error fetching adjustment:', error)
+    return {
+      success: false,
+      error: 'Failed to fetch adjustment'
+    }
+  }
+}
+
 // Create new adjustment
 export async function createInventoryAdjustment(data: CreateAdjustmentInput): Promise<{
   success: boolean
-  data?: AdjustmentWithDetails
+  data?: { id: string; adjustmentNumber: string }
   error?: string
 }> {
   try {
@@ -373,7 +408,10 @@ export async function createInventoryAdjustment(data: CreateAdjustmentInput): Pr
     
     return {
       success: true,
-      data: transformAdjustment(result)
+      data: {
+        id: result.id,
+        adjustmentNumber: result.adjustmentNumber
+      }
     }
 
   } catch (error) {

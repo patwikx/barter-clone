@@ -151,9 +151,11 @@ export function PurchasesView({
           <p className="text-gray-600 mt-1">Manage purchase orders and supplier transactions</p>
         </div>
         <div className="flex items-center space-x-2">
-          <Button>
+          <Button asChild>
+            <Link href="/dashboard/purchases/create">
             <Plus className="w-4 h-4 mr-2" />
             New Purchase Order
+            </Link>
           </Button>
           <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isPending ? 'animate-spin' : ''}`} />
@@ -332,9 +334,11 @@ export function PurchasesView({
               <p className="text-gray-500 text-center mb-6">
                 No orders match your current filters or no purchase data available.
               </p>
-              <Button>
+              <Button asChild>
+                <Link href="/dashboard/purchases/create">
                 <Plus className="w-4 h-4 mr-2" />
                 Create Purchase Order
+                </Link>
               </Button>
             </div>
           ) : (
