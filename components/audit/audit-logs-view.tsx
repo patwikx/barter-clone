@@ -16,21 +16,17 @@ import {
   Plus,
   CheckCircle,
   XCircle,
-  Home,
-  ChevronRight,
   ChevronDown,
   ChevronUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { getAuditLogs, type AuditLogWithDetails, type AuditLogFilters } from "@/lib/actions/audit-actions"
 import { AuditAction } from "@prisma/client"
 import { toast } from "sonner"
-import Link from "next/link"
 
 interface AuditLogsViewProps {
   initialAuditLogs: AuditLogWithDetails[]

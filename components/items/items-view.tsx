@@ -74,6 +74,7 @@ export function ItemsView({ initialItems, suppliers }: ItemsViewProps) {
     })
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleFilterChange = () => {
     handleRefresh()
   }
