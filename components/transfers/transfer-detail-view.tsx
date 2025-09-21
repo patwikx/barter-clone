@@ -3,7 +3,6 @@
 import React, { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
-  ArrowLeft,
   ArrowRightLeft,
   User,
   Package,
@@ -15,11 +14,10 @@ import {
   Trash2,
   FileText,
   Loader2,
+  ChevronRight,
+  Home,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
 import {
   Dialog,
@@ -115,23 +113,28 @@ export function TransferDetailView({ initialTransfer }: TransferDetailViewProps)
     : null
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-[1600px] mx-auto p-8 space-y-8">
+        {/* Breadcrumbs */}
+        <nav className="flex items-center space-x-2 text-sm text-gray-600 mb-6">
+          <Link href="/dashboard" className="flex items-center hover:text-gray-900 transition-colors">
+            <Home className="w-4 h-4" />
+          </Link>
+          <ChevronRight className="w-4 h-4" />
+          <Link href="/dashboard/transfers" className="hover:text-gray-900 transition-colors">
+            Stock Transfers
+          </Link>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-gray-900 font-medium">{transfer.transferNumber}</span>
+        </nav>
+
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/dashboard/transfers">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Transfers
-              </Link>
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{transfer.transferNumber}</h1>
-              <p className="text-gray-600">Stock Transfer Details</p>
-            </div>
+        <div className="flex items-start justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{transfer.transferNumber}</h1>
+            <p className="text-gray-600">Stock Transfer Details</p>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-3">
             {transfer.status === TransferStatus.PENDING && (
               <>
                 <Button variant="outline">
@@ -155,190 +158,197 @@ export function TransferDetailView({ initialTransfer }: TransferDetailViewProps)
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-8">
             {/* Transfer Items */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Package className="w-5 h-5 mr-2" />
-                  Transfer Items
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-8 py-6 border-b border-gray-200 bg-gray-50/50">
+                <h2 className="text-xl font-bold text-gray-900 flex items-center">
+                  <Package className="w-6 h-6 mr-3 text-blue-600" />
+                  Transfer Items ({transfer.transferItems.length})
+                </h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                      <th className="text-right py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
                     {transfer.transferItems.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{item.item.itemCode}</div>
-                            <div className="text-sm text-gray-500 max-w-xs truncate">
+                      <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-4 px-6 whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <div className="text-sm font-semibold text-gray-900">{item.item.itemCode}</div>
+                            <div className="text-sm text-gray-600 max-w-xs truncate">
                               {item.item.description}
                             </div>
-                            <div className="text-xs text-gray-400">
+                            <div className="text-xs text-gray-500 mt-1">
                               UOM: {item.item.unitOfMeasure}
                             </div>
                           </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatNumber(item.quantity)}
-                        </TableCell>
-                      </TableRow>
+                        </td>
+                        <td className="py-4 px-6 whitespace-nowrap text-right">
+                          <div className="text-sm font-medium text-gray-900">
+                            {formatNumber(item.quantity)}
+                          </div>
+                        </td>
+                      </tr>
                     ))}
-                  </TableBody>
-                </Table>
+                  </tbody>
+                </table>
                 
-                <div className="p-4 border-t">
+                <div className="px-8 py-6 border-t border-gray-200 bg-gray-50/50">
                   <div className="flex justify-between items-center">
-                    <span className="font-medium">Total Items:</span>
-                    <span className="text-xl font-bold">{transfer.transferItems.length}</span>
+                    <span className="text-lg font-semibold text-gray-900">Total Items:</span>
+                    <span className="text-2xl font-bold text-gray-900">{formatNumber(transfer.transferItems.length)}</span>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Status Card */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Transfer Status</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Transfer Status</h3>
+              <div className="space-y-4">
                 <div className="flex items-center justify-center">
-                  <Badge className={`${getStatusColor(transfer.status)} text-lg px-4 py-2`}>
-                    <StatusIcon className="w-4 h-4 mr-2" />
+                  <span className={`inline-flex items-center px-4 py-2 rounded-full text-base font-medium ${getStatusColor(transfer.status)}`}>
+                    <StatusIcon className="w-5 h-5 mr-2" />
                     {transfer.status.replace(/_/g, ' ')}
-                  </Badge>
+                  </span>
                 </div>
                 
                 <Separator />
                 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Transfer Date</span>
-                    <span className="text-sm font-medium">
-                      {transfer.transferDate.toLocaleDateString()}
+                    <span className="text-sm font-medium text-gray-600">Transfer Date</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {transfer.transferDate.toLocaleDateString('en-PH', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Created</span>
-                    <span className="text-sm font-medium">
-                      {transfer.createdAt.toLocaleDateString()}
+                    <span className="text-sm font-medium text-gray-600">Created</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {transfer.createdAt.toLocaleDateString('en-PH', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
                     </span>
                   </div>
                   {transfer.approvedAt && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Approved</span>
-                      <span className="text-sm font-medium">
-                        {transfer.approvedAt.toLocaleDateString()}
+                      <span className="text-sm font-medium text-gray-600">Approved</span>
+                      <span className="text-sm font-semibold text-gray-900">
+                        {transfer.approvedAt.toLocaleDateString('en-PH', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
                       </span>
                     </div>
                   )}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* Warehouse Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <ArrowRightLeft className="w-5 h-5 mr-2" />
-                  Transfer Route
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <ArrowRightLeft className="w-5 h-5 mr-2 text-gray-600" />
+                Transfer Route
+              </h3>
+              <div className="space-y-4">
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700">From Warehouse</h4>
-                  <p className="text-sm text-gray-900">{transfer.fromWarehouse.name}</p>
+                  <h4 className="text-sm font-medium text-gray-600 mb-1">From Warehouse</h4>
+                  <p className="text-base font-semibold text-gray-900">{transfer.fromWarehouse.name}</p>
                   {transfer.fromWarehouse.location && (
-                    <p className="text-xs text-gray-500">{transfer.fromWarehouse.location}</p>
+                    <p className="text-sm text-gray-500">{transfer.fromWarehouse.location}</p>
                   )}
                 </div>
                 
-                <div className="flex justify-center">
+                <div className="flex justify-center py-2">
                   <ArrowRightLeft className="w-6 h-6 text-blue-500" />
                 </div>
                 
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700">To Warehouse</h4>
-                  <p className="text-sm text-gray-900">{transfer.toWarehouse.name}</p>
+                  <h4 className="text-sm font-medium text-gray-600 mb-1">To Warehouse</h4>
+                  <p className="text-base font-semibold text-gray-900">{transfer.toWarehouse.name}</p>
                   {transfer.toWarehouse.location && (
-                    <p className="text-xs text-gray-500">{transfer.toWarehouse.location}</p>
+                    <p className="text-sm text-gray-500">{transfer.toWarehouse.location}</p>
                   )}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* Transfer Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <FileText className="w-5 h-5 mr-2" />
-                  Transfer Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <FileText className="w-5 h-5 mr-2 text-gray-600" />
+                Transfer Summary
+              </h3>
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Items Count</span>
-                  <span className="text-sm font-medium">{transfer.transferItems.length}</span>
+                  <span className="text-sm font-medium text-gray-600">Items Count</span>
+                  <span className="text-sm font-semibold text-gray-900">{formatNumber(transfer.transferItems.length)}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Total Quantity</span>
-                  <span className="text-sm font-medium">
+                  <span className="text-sm font-medium text-gray-600">Total Quantity</span>
+                  <span className="text-sm font-semibold text-gray-900">
                     {formatNumber(transfer.transferItems.reduce((sum, item) => sum + item.quantity, 0))}
                   </span>
                 </div>
-              </CardContent>
-            </Card>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-base font-semibold text-gray-900">Total Items</span>
+                  <span className="text-xl font-bold text-gray-900">{formatNumber(transfer.transferItems.length)}</span>
+                </div>
+              </div>
+            </div>
 
             {/* User Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <User className="w-5 h-5 mr-2" />
-                  User Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <User className="w-5 h-5 mr-2 text-gray-600" />
+                User Information
+              </h3>
+              <div className="space-y-4">
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700">Created By</h4>
-                  <p className="text-sm text-gray-900">{createdByName}</p>
-                  <p className="text-xs text-gray-500">@{transfer.createdBy.username}</p>
+                  <h4 className="text-sm font-medium text-gray-600 mb-1">Created By</h4>
+                  <p className="text-base font-semibold text-gray-900">{createdByName}</p>
+                  <p className="text-sm text-gray-500">@{transfer.createdBy.username}</p>
                 </div>
                 
                 {approvedByName && (
                   <>
                     <Separator />
                     <div>
-                      <h4 className="text-sm font-medium text-gray-700">Approved By</h4>
-                      <p className="text-sm text-gray-900">{approvedByName}</p>
-                      <p className="text-xs text-gray-500">@{transfer.approvedBy?.username}</p>
+                      <h4 className="text-sm font-medium text-gray-600 mb-1">Approved By</h4>
+                      <p className="text-base font-semibold text-gray-900">{approvedByName}</p>
+                      <p className="text-sm text-gray-500">@{transfer.approvedBy?.username}</p>
                     </div>
                   </>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* Notes */}
             {transfer.notes && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Notes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-900">{transfer.notes}</p>
-                </CardContent>
-              </Card>
+              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes</h3>
+                <p className="text-sm text-gray-700 leading-relaxed">{transfer.notes}</p>
+              </div>
             )}
           </div>
         </div>

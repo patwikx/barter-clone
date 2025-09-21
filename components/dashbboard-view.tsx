@@ -11,10 +11,19 @@ import {
   RefreshCw,
   Calendar,
   Clock,
+  TrendingUp,
+  Activity,
+  BarChart3,
+  CheckCircle,
+  XCircle,
+  Eye,
+  ArrowUpRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Progress } from "@/components/ui/progress"
 import { getDashboardStats, type DashboardStats } from "@/lib/actions/dashboard-actions"
 import { toast } from "sonner"
 import Link from "next/link"
@@ -38,22 +47,22 @@ const getActivityIcon = (type: string) => {
   }
 }
 
-const getStatusColor = (status: string) => {
+const getStatusVariant = (status: string): { className: string; icon: React.ElementType } => {
   switch (status.toLowerCase()) {
     case 'pending':
-      return "bg-yellow-100 text-yellow-800"
+      return { className: "bg-amber-50 text-amber-700 border-amber-200", icon: Clock }
     case 'approved':
-      return "bg-blue-100 text-blue-800"
+      return { className: "bg-blue-50 text-blue-700 border-blue-200", icon: CheckCircle }
     case 'completed':
     case 'received':
-      return "bg-green-100 text-green-800"
+      return { className: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle }
     case 'cancelled':
     case 'rejected':
-      return "bg-red-100 text-red-800"
+      return { className: "bg-red-50 text-red-700 border-red-200", icon: XCircle }
     case 'in_transit':
-      return "bg-purple-100 text-purple-800"
+      return { className: "bg-purple-50 text-purple-700 border-purple-200", icon: Activity }
     default:
-      return "bg-gray-100 text-gray-800"
+      return { className: "bg-slate-50 text-slate-700 border-slate-200", icon: Activity }
   }
 }
 
@@ -77,7 +86,9 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PH', {
       style: 'currency',
-      currency: 'PHP'
+      currency: 'PHP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(amount)
   }
 
@@ -85,276 +96,435 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
     return new Intl.NumberFormat('en-PH').format(num)
   }
 
+  const formatDate = (date: Date) => {
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date)
+  }
+
   if (!stats) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading Dashboard</h2>
-          <p className="text-gray-600">Please wait while we load your dashboard data...</p>
+      <div className="flex items-center justify-center min-h-[600px]">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 mx-auto bg-slate-100 rounded-full flex items-center justify-center">
+            <BarChart3 className="w-8 h-8 text-slate-400" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold text-slate-900">Loading Dashboard</h2>
+            <p className="text-sm text-slate-600">Retrieving your warehouse analytics...</p>
+          </div>
         </div>
       </div>
     )
   }
 
+  const stockHealthPercentage = stats.inventory.totalItems > 0 
+    ? ((stats.inventory.totalItems - stats.inventory.lowStockItems - stats.inventory.outOfStockItems) / stats.inventory.totalItems) * 100 
+    : 100
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-1">Overview of your warehouse management system</p>
+    <div className="space-y-8 p-8 bg-slate-50/50 min-h-screen">
+      {/* Header Section */}
+      <div className="flex items-start justify-between">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            Warehouse Operations Dashboard
+          </h1>
+          <p className="text-slate-600 max-w-2xl">
+            Monitor key performance indicators and manage your inventory operations from this centralized command center.
+          </p>
         </div>
-        <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
+        <Button 
+          variant="outline" 
+          onClick={handleRefresh} 
+          disabled={isPending}
+          className="shrink-0"
+        >
           <RefreshCw className={`w-4 h-4 mr-2 ${isPending ? 'animate-spin' : ''}`} />
-          Refresh
+          Refresh Data
         </Button>
       </div>
 
-      {/* Main Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Inventory Stats */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Inventory</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(stats.inventory.totalItems)}</div>
-            <p className="text-xs text-muted-foreground">
-              {formatCurrency(stats.inventory.totalValue)} total value
-            </p>
-            <div className="flex items-center space-x-2 mt-2">
-              <Link href="/dashboard/inventory/current">
-                <Button variant="outline" size="sm">View Details</Button>
-              </Link>
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-0 shadow-sm bg-white">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-slate-600">Total Inventory Value</p>
+                <p className="text-xl font-bold text-slate-900">
+                  {formatCurrency(stats.inventory.totalValue)}
+                </p>
+                <p className="text-xs text-slate-500">{formatNumber(stats.inventory.totalItems)} items • {stats.inventory.warehouseCount} locations</p>
+              </div>
+              <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+                <DollarSign className="w-5 h-5 text-blue-600" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-orange-500" />
+        <Card className="border-0 shadow-sm bg-white">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-slate-600">Stock Health</p>
+                <p className="text-xl font-bold text-slate-900">
+                  {stockHealthPercentage.toFixed(1)}%
+                </p>
+                <div className="space-y-1">
+                  <Progress value={stockHealthPercentage} className="h-1.5" />
+                  <p className="text-xs text-slate-500">{stats.inventory.totalItems - stats.inventory.lowStockItems - stats.inventory.outOfStockItems} healthy • {stats.inventory.lowStockItems} low</p>
+                </div>
+              </div>
+              <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
+                <Package className="w-5 h-5 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm bg-white">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-slate-600">Active Operations</p>
+                <p className="text-xl font-bold text-slate-900">
+                  {stats.purchases.pendingPurchases + stats.transfers.pendingTransfers + stats.transfers.inTransitTransfers + stats.withdrawals.pendingWithdrawals}
+                </p>
+                <p className="text-xs text-slate-500">Pending approvals & in-transit</p>
+              </div>
+              <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
+                <Activity className="w-5 h-5 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm bg-white">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-slate-600">Monthly Purchases</p>
+                <p className="text-xl font-bold text-slate-900">
+                  {formatCurrency(stats.purchases.totalValue)}
+                </p>
+                <p className="text-xs text-slate-500">{stats.purchases.thisMonthPurchases} orders this month</p>
+              </div>
+              <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-orange-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Critical Alerts Section */}
+      {stats.inventory.lowStockItems > 0 && (
+        <Card className="border-0 shadow-sm bg-white border-l-4 border-l-amber-400">
+          <CardHeader>
+            <div className="flex items-center space-x-3">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              <div>
+                <h3 className="font-semibold text-slate-900">Stock Level Alert</h3>
+                <p className="text-sm text-slate-600">Items requiring immediate attention</p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats.inventory.lowStockItems}</div>
-            <p className="text-xs text-muted-foreground">
-              Need immediate attention
-            </p>
-            <div className="flex items-center space-x-2 mt-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-amber-600">{stats.inventory.lowStockItems}</p>
+                  <p className="text-xs text-slate-600">Low Stock</p>
+                </div>
+                <Separator orientation="vertical" className="h-12" />
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-red-600">{stats.inventory.outOfStockItems}</p>
+                  <p className="text-xs text-slate-600">Out of Stock</p>
+                </div>
+              </div>
               <Link href="/dashboard/inventory/low-stock">
-                <Button variant="outline" size="sm">View Items</Button>
+                <Button variant="outline" size="sm">
+                  View Details
+                  <ArrowUpRight className="w-3 h-3 ml-1" />
+                </Button>
               </Link>
             </div>
           </CardContent>
         </Card>
+      )}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Purchases</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.purchases.pendingPurchases}</div>
-            <p className="text-xs text-muted-foreground">
-              {formatNumber(stats.purchases.thisMonthPurchases)} this month
-            </p>
-            <div className="flex items-center space-x-2 mt-2">
+      {/* Operations Overview */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Purchase Operations */}
+        <Card className="border-0 shadow-sm bg-white">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <ShoppingCart className="w-5 h-5 text-blue-600" />
+                <h3 className="font-semibold text-slate-900">Purchase Operations</h3>
+              </div>
               <Link href="/dashboard/purchases">
-                <Button variant="outline" size="sm">View Orders</Button>
+                <Button variant="ghost" size="sm">
+                  <Eye className="w-4 h-4" />
+                </Button>
               </Link>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Transfers</CardTitle>
-            <ArrowRightLeft className="h-4 w-4 text-purple-500" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600">
-              {stats.transfers.pendingTransfers + stats.transfers.inTransitTransfers}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {formatNumber(stats.transfers.thisMonthTransfers)} this month
-            </p>
-            <div className="flex items-center space-x-2 mt-2">
-              <Link href="/dashboard/transfers">
-                <Button variant="outline" size="sm">View Transfers</Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Secondary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <DollarSign className="w-5 h-5 mr-2" />
-              Purchase Overview
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Total Orders</span>
-              <span className="font-medium">{formatNumber(stats.purchases.totalPurchases)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Total Value</span>
-              <span className="font-medium">{formatCurrency(stats.purchases.totalValue)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Pending Approval</span>
-              <Badge className="bg-yellow-100 text-yellow-800">
-                {stats.purchases.pendingPurchases}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <ArrowRightLeft className="w-5 h-5 mr-2" />
-              Transfer Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Total Transfers</span>
-              <span className="font-medium">{formatNumber(stats.transfers.totalTransfers)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Pending</span>
-              <Badge className="bg-yellow-100 text-yellow-800">
-                {stats.transfers.pendingTransfers}
-              </Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">In Transit</span>
-              <Badge className="bg-blue-100 text-blue-800">
-                {stats.transfers.inTransitTransfers}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Truck className="w-5 h-5 mr-2" />
-              Withdrawal Requests
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Total Requests</span>
-              <span className="font-medium">{formatNumber(stats.withdrawals.totalWithdrawals)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Pending</span>
-              <Badge className="bg-yellow-100 text-yellow-800">
-                {stats.withdrawals.pendingWithdrawals}
-              </Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">Approved</span>
-              <Badge className="bg-blue-100 text-blue-800">
-                {stats.withdrawals.approvedWithdrawals}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Clock className="w-5 h-5 mr-2" />
-            Recent Activity
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {stats.recentActivity.length === 0 ? (
-            <div className="text-center py-8">
-              <Clock className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">No recent activity</p>
-            </div>
-          ) : (
+          <CardContent className="space-y-6">
             <div className="space-y-4">
-              {stats.recentActivity.map((activity) => {
-                const ActivityIcon = getActivityIcon(activity.type)
-                return (
-                  <div key={activity.id} className="flex items-center space-x-4 p-4 border border-gray-200 rounded-lg">
-                    <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                      <ActivityIcon className="w-5 h-5 text-gray-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-medium text-gray-900">{activity.title}</span>
-                        <Badge className={getStatusColor(activity.status)}>
-                          {activity.status.replace(/_/g, ' ')}
-                        </Badge>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Total Orders</span>
+                <span className="font-semibold text-slate-900">{formatNumber(stats.purchases.totalPurchases)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Pending Approval</span>
+                <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
+                  {stats.purchases.pendingPurchases}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">This Month</span>
+                <span className="font-semibold text-slate-900">{formatNumber(stats.purchases.thisMonthPurchases)}</span>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-900">Total Value</span>
+              <span className="text-lg font-bold text-slate-900">{formatCurrency(stats.purchases.totalValue)}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Transfer Operations */}
+        <Card className="border-0 shadow-sm bg-white">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <ArrowRightLeft className="w-5 h-5 text-purple-600" />
+                <h3 className="font-semibold text-slate-900">Transfer Operations</h3>
+              </div>
+              <Link href="/dashboard/transfers">
+                <Button variant="ghost" size="sm">
+                  <Eye className="w-4 h-4" />
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Total Transfers</span>
+                <span className="font-semibold text-slate-900">{formatNumber(stats.transfers.totalTransfers)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Pending</span>
+                <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
+                  {stats.transfers.pendingTransfers}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">In Transit</span>
+                <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                  {stats.transfers.inTransitTransfers}
+                </Badge>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-900">This Month</span>
+              <span className="text-lg font-bold text-slate-900">{formatNumber(stats.transfers.thisMonthTransfers)}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Withdrawal Operations */}
+        <Card className="border-0 shadow-sm bg-white">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Truck className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-semibold text-slate-900">Withdrawal Operations</h3>
+              </div>
+              <Link href="/dashboard/withdrawals">
+                <Button variant="ghost" size="sm">
+                  <Eye className="w-4 h-4" />
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Total Requests</span>
+                <span className="font-semibold text-slate-900">{formatNumber(stats.withdrawals.totalWithdrawals)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Pending</span>
+                <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
+                  {stats.withdrawals.pendingWithdrawals}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Approved</span>
+                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                  {stats.withdrawals.approvedWithdrawals}
+                </Badge>
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-900">This Month</span>
+              <span className="text-lg font-bold text-slate-900">{formatNumber(stats.withdrawals.thisMonthWithdrawals)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Activity & Quick Actions Side by Side */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Recent Activity Timeline - Takes 2 columns */}
+        <div className="xl:col-span-2">
+          <Card className="border-0 shadow-sm bg-white h-full">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Clock className="w-4 h-4 text-slate-600" />
+                  <h3 className="font-semibold text-slate-900 text-sm">Recent Activity</h3>
+                </div>
+                <span className="text-xs text-slate-600">Last 24 hours</span>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {stats.recentActivity.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Clock className="w-6 h-6 text-slate-400" />
+                  </div>
+                  <h4 className="text-sm font-medium text-slate-900 mb-1">No Recent Activity</h4>
+                  <p className="text-xs text-slate-600">System activities will appear here as they occur</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {stats.recentActivity.slice(0, 8).map((activity) => {
+                    const ActivityIcon = getActivityIcon(activity.type)
+                    const statusVariant = getStatusVariant(activity.status)
+                    const StatusIcon = statusVariant.icon
+                    
+                    return (
+                      <div key={activity.id} className="flex items-start space-x-3 p-3 rounded-md border border-slate-100 hover:border-slate-200 transition-colors">
+                        <div className="w-8 h-8 bg-slate-50 rounded-md flex items-center justify-center flex-shrink-0">
+                          <ActivityIcon className="w-4 h-4 text-slate-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <h4 className="font-medium text-slate-900 truncate text-sm">
+                              {activity.title}
+                            </h4>
+                            <Badge variant="outline" className={`${statusVariant.className} flex items-center space-x-1 text-xs px-2 py-0.5`}>
+                              <StatusIcon className="w-2.5 h-2.5" />
+                              <span className="capitalize">{activity.status.replace(/_/g, ' ').toLowerCase()}</span>
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-slate-600 mb-1 truncate">
+                            {activity.description}
+                          </p>
+                          <div className="flex items-center space-x-1 text-xs text-slate-500">
+                            <Calendar className="w-2.5 h-2.5" />
+                            <span>{formatDate(activity.timestamp)}</span>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-500 truncate">{activity.description}</p>
-                    </div>
-                    <div className="flex items-center space-x-1 text-sm text-gray-500">
-                      <Calendar className="w-3 h-3" />
-                      <span>{activity.timestamp.toLocaleDateString()}</span>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Actions - Takes 1 column */}
+        <div className="xl:col-span-1">
+          <Card className="border-0 shadow-sm bg-white h-full">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-slate-900 text-sm">Quick Actions</h3>
+                <p className="text-xs text-slate-600">Streamline</p>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-1 gap-2">
+                <Link href="/dashboard/purchases/create" className="group">
+                  <div className="p-3 rounded-md border border-slate-100 hover:border-blue-200 hover:shadow-sm transition-all duration-200 cursor-pointer">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-blue-50 rounded-md flex items-center justify-center group-hover:bg-blue-100 transition-colors flex-shrink-0">
+                        <ShoppingCart className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-medium text-slate-900 group-hover:text-blue-700 transition-colors text-sm">
+                          Create Purchase Order
+                        </h4>
+                        <p className="text-xs text-slate-600">Order new inventory items</p>
+                      </div>
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </Link>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
-          <Link href="/dashboard/purchases/create">
-            <CardContent className="p-6 text-center">
-              <ShoppingCart className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-              <h3 className="font-medium text-gray-900">Create Purchase Order</h3>
-              <p className="text-sm text-gray-500 mt-1">Order new inventory</p>
-            </CardContent>
-          </Link>
-        </Card>
+                <Link href="/dashboard/transfers/create" className="group">
+                  <div className="p-3 rounded-md border border-slate-100 hover:border-purple-200 hover:shadow-sm transition-all duration-200 cursor-pointer">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-purple-50 rounded-md flex items-center justify-center group-hover:bg-purple-100 transition-colors flex-shrink-0">
+                        <ArrowRightLeft className="w-4 h-4 text-purple-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-medium text-slate-900 group-hover:text-purple-700 transition-colors text-sm">
+                          Create Transfer
+                        </h4>
+                        <p className="text-xs text-slate-600">Move items between locations</p>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
 
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
-          <Link href="/dashboard/transfers/create">
-            <CardContent className="p-6 text-center">
-              <ArrowRightLeft className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-              <h3 className="font-medium text-gray-900">Create Transfer</h3>
-              <p className="text-sm text-gray-500 mt-1">Move inventory between warehouses</p>
-            </CardContent>
-          </Link>
-        </Card>
+                <Link href="/dashboard/withdrawals/create" className="group">
+                  <div className="p-3 rounded-md border border-slate-100 hover:border-emerald-200 hover:shadow-sm transition-all duration-200 cursor-pointer">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-emerald-50 rounded-md flex items-center justify-center group-hover:bg-emerald-100 transition-colors flex-shrink-0">
+                        <Truck className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-medium text-slate-900 group-hover:text-emerald-700 transition-colors text-sm">
+                          Request Withdrawal
+                        </h4>
+                        <p className="text-xs text-slate-600">Request materials for production</p>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
 
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
-          <Link href="/dashboard/withdrawals/create">
-            <CardContent className="p-6 text-center">
-              <Truck className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <h3 className="font-medium text-gray-900">Request Withdrawal</h3>
-              <p className="text-sm text-gray-500 mt-1">Request materials for production</p>
+                <Link href="/dashboard/inventory/current" className="group">
+                  <div className="p-3 rounded-md border border-slate-100 hover:border-orange-200 hover:shadow-sm transition-all duration-200 cursor-pointer">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-orange-50 rounded-md flex items-center justify-center group-hover:bg-orange-100 transition-colors flex-shrink-0">
+                        <Package className="w-4 h-4 text-orange-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-medium text-slate-900 group-hover:text-orange-700 transition-colors text-sm">
+                          View Inventory
+                        </h4>
+                        <p className="text-xs text-slate-600">Check current stock levels</p>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              </div>
             </CardContent>
-          </Link>
-        </Card>
-
-        <Card className="hover:shadow-md transition-shadow cursor-pointer">
-          <Link href="/dashboard/inventory/current">
-            <CardContent className="p-6 text-center">
-              <Package className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-              <h3 className="font-medium text-gray-900">View Inventory</h3>
-              <p className="text-sm text-gray-500 mt-1">Check current stock levels</p>
-            </CardContent>
-          </Link>
-        </Card>
+          </Card>
+        </div>
       </div>
     </div>
   )

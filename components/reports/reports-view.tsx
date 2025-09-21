@@ -11,9 +11,10 @@ import {
   TrendingDown,
   FileText,
   Filter,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -30,6 +31,7 @@ export function ReportsView({ initialData }: ReportsViewProps) {
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [isPending, startTransition] = useTransition()
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false)
 
   const handleRefresh = () => {
     startTransition(async () => {
@@ -47,7 +49,9 @@ export function ReportsView({ initialData }: ReportsViewProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PH', {
       style: 'currency',
-      currency: 'PHP'
+      currency: 'PHP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(amount)
   }
 
@@ -57,167 +61,188 @@ export function ReportsView({ initialData }: ReportsViewProps) {
 
   if (!reportsData) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading Reports</h2>
-          <p className="text-gray-600">Please wait while we load your reports data...</p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-[1600px] mx-auto p-8">
+          <div className="flex items-center justify-center min-h-[50vh]">
+            <div className="text-center">
+              <div className="p-4 bg-gray-50 rounded-full mb-4 mx-auto w-fit">
+                <BarChart3 className="w-12 h-12 text-gray-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading Reports</h2>
+              <p className="text-gray-600">Please wait while we load your reports data...</p>
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
-          <p className="text-gray-600 mt-1">Comprehensive reporting and business intelligence</p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-[1600px] mx-auto p-8 space-y-8">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Reports & Analytics</h1>
+            <p className="text-gray-600">Comprehensive reporting and business intelligence</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${isPending ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button variant="outline">
+              <Download className="w-4 h-4 mr-2" />
+              Export Report
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" onClick={handleRefresh} disabled={isPending}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${isPending ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button variant="outline">
-            <Download className="w-4 h-4 mr-2" />
-            Export Report
-          </Button>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-purple-50 rounded-lg">
+                <DollarSign className="h-4 w-4 text-purple-600" />
+              </div>
+            </div>
+            <div className="text-xl font-bold text-purple-600 mb-1">{formatCurrency(reportsData.inventorySummary.totalValue)}</div>
+            <div className="text-sm font-medium text-gray-600">Total Inventory Value</div>
+            <div className="text-xs text-gray-500 mt-1">{formatNumber(reportsData.inventorySummary.totalItems)} items</div>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-green-50 rounded-lg">
+                <TrendingUp className="h-4 w-4 text-green-600" />
+              </div>
+            </div>
+            <div className="text-xl font-bold text-green-600 mb-1">{formatCurrency(reportsData.purchaseSummary.monthlyValue)}</div>
+            <div className="text-sm font-medium text-gray-600">Monthly Purchases</div>
+            <div className="text-xs text-gray-500 mt-1">{formatNumber(reportsData.purchaseSummary.monthlyCount)} orders</div>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-red-50 rounded-lg">
+                <TrendingDown className="h-4 w-4 text-red-600" />
+              </div>
+            </div>
+            <div className="text-xl font-bold text-red-600 mb-1">{formatCurrency(reportsData.withdrawalSummary.monthlyValue)}</div>
+            <div className="text-sm font-medium text-gray-600">Monthly Withdrawals</div>
+            <div className="text-xs text-gray-500 mt-1">{formatNumber(reportsData.withdrawalSummary.monthlyCount)} requests</div>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-2 bg-blue-50 rounded-lg">
+                <Package className="h-4 w-4 text-blue-600" />
+              </div>
+            </div>
+            <div className="text-xl font-bold text-blue-600 mb-1">{reportsData.transferSummary.activeTransfers}</div>
+            <div className="text-sm font-medium text-gray-600">Active Transfers</div>
+            <div className="text-xs text-gray-500 mt-1">{formatNumber(reportsData.transferSummary.monthlyCount)} this month</div>
+          </div>
         </div>
-      </div>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Filter className="w-5 h-5 mr-2" />
-            Report Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label>Report Type</Label>
-              <Select value={selectedReport} onValueChange={setSelectedReport}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="inventory">Inventory Report</SelectItem>
-                  <SelectItem value="movements">Movement Report</SelectItem>
-                  <SelectItem value="purchases">Purchase Report</SelectItem>
-                  <SelectItem value="transfers">Transfer Report</SelectItem>
-                  <SelectItem value="withdrawals">Withdrawal Report</SelectItem>
-                  <SelectItem value="cost">Cost Analysis</SelectItem>
-                </SelectContent>
-              </Select>
+        {/* Filters */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div 
+            className="px-8 py-6 border-b border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-100/50 transition-colors"
+            onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                <Filter className="w-6 h-6 mr-3 text-blue-600" />
+                Report Filters
+              </h3>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-500">
+                  {isFilterExpanded ? 'Collapse' : 'Expand'}
+                </span>
+                {isFilterExpanded ? (
+                  <ChevronUp className="w-5 h-5 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-gray-400" />
+                )}
+              </div>
             </div>
+          </div>
+          {isFilterExpanded && (
+            <div className="p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Report Type</Label>
+                  <Select value={selectedReport} onValueChange={setSelectedReport}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inventory">Inventory Report</SelectItem>
+                      <SelectItem value="movements">Movement Report</SelectItem>
+                      <SelectItem value="purchases">Purchase Report</SelectItem>
+                      <SelectItem value="transfers">Transfer Report</SelectItem>
+                      <SelectItem value="withdrawals">Withdrawal Report</SelectItem>
+                      <SelectItem value="cost">Cost Analysis</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="space-y-2">
-              <Label>Date From</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Date From</Label>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Date To</Label>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">&nbsp;</Label>
+                  <Button onClick={handleRefresh} disabled={isPending} className="w-full">
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    Generate Report
+                  </Button>
+                </div>
+              </div>
             </div>
+          )}
+        </div>
 
-            <div className="space-y-2">
-              <Label>Date To</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>&nbsp;</Label>
-              <Button onClick={handleRefresh} disabled={isPending} className="w-full">
-                Generate Report
+        {/* Report Content */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-8 py-6 border-b border-gray-200 bg-gray-50/50">
+            <h3 className="text-xl font-bold text-gray-900 flex items-center">
+              <BarChart3 className="w-6 h-6 mr-3 text-blue-600" />
+              {selectedReport.charAt(0).toUpperCase() + selectedReport.slice(1)} Report
+            </h3>
+          </div>
+          <div className="p-8">
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="p-4 bg-gray-50 rounded-full mb-4">
+                <FileText className="w-12 h-12 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Report Generation</h3>
+              <p className="text-gray-500 text-center mb-8 max-w-sm">
+                Select your filters and click &quot;Generate Report&quot; to view detailed analytics and insights.
+              </p>
+              <Button onClick={handleRefresh} disabled={isPending}>
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Generate {selectedReport.charAt(0).toUpperCase() + selectedReport.slice(1)} Report
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Inventory Value</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(reportsData.inventorySummary.totalValue)}</div>
-            <p className="text-xs text-muted-foreground">
-              {formatNumber(reportsData.inventorySummary.totalItems)} items
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Monthly Purchases</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(reportsData.purchaseSummary.monthlyValue)}</div>
-            <p className="text-xs text-muted-foreground">
-              {formatNumber(reportsData.purchaseSummary.monthlyCount)} orders
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Monthly Withdrawals</CardTitle>
-            <TrendingDown className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(reportsData.withdrawalSummary.monthlyValue)}</div>
-            <p className="text-xs text-muted-foreground">
-              {formatNumber(reportsData.withdrawalSummary.monthlyCount)} requests
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Transfers</CardTitle>
-            <Package className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{reportsData.transferSummary.activeTransfers}</div>
-            <p className="text-xs text-muted-foreground">
-              {formatNumber(reportsData.transferSummary.monthlyCount)} this month
-            </p>
-          </CardContent>
-        </Card>
+        </div>
       </div>
-
-      {/* Report Content */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <BarChart3 className="w-5 h-5 mr-2" />
-            {selectedReport.charAt(0).toUpperCase() + selectedReport.slice(1)} Report
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center py-12">
-            <FileText className="w-12 h-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Report Generation</h3>
-            <p className="text-gray-500 text-center mb-6">
-              Select your filters and click &quot;Generate Report&quot; to view detailed analytics.
-            </p>
-            <Button onClick={handleRefresh} disabled={isPending}>
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Generate {selectedReport.charAt(0).toUpperCase() + selectedReport.slice(1)} Report
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }
