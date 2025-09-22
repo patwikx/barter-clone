@@ -10,7 +10,7 @@ export interface ReportsData {
     lowStockItems: number
     outOfStockItems: number
   }
-  itemEntrySummary: {
+  purchaseSummary: {
     monthlyCount: number
     monthlyValue: number
     totalCount: number
@@ -101,10 +101,10 @@ export async function getReportsData(
 
     // Get item entry summary (replaces purchase summary)
     const [
-      totalItemEntries,
-      itemEntryValue,
-      monthlyItemEntries,
-      monthlyItemEntryValue
+      totalEntries,
+      entriesValue,
+      monthlyEntries,
+      monthlyEntriesValue
     ] = await Promise.all([
       prisma.itemEntry.count({
         where: warehouseFilter
@@ -210,11 +210,11 @@ export async function getReportsData(
         lowStockItems,
         outOfStockItems
       },
-      itemEntrySummary: {
-        monthlyCount: monthlyItemEntries,
-        monthlyValue: Number(monthlyItemEntryValue._sum.totalValue || 0),
-        totalCount: totalItemEntries,
-        totalValue: Number(itemEntryValue._sum.totalValue || 0)
+      purchaseSummary: {
+        monthlyCount: monthlyEntries,
+        monthlyValue: Number(monthlyEntriesValue._sum.totalValue || 0),
+        totalCount: totalEntries,
+        totalValue: Number(entriesValue._sum.totalValue || 0)
       },
       transferSummary: {
         activeTransfers,

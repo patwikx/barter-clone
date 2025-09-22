@@ -68,9 +68,9 @@ interface NavMainProps {
 
 // Permission constants
 const PERMISSIONS = {
-  CREATE_PURCHASES: "CREATE_PURCHASES",
+  CREATE_ITEM_ENTRIES: "CREATE_ITEM_ENTRIES",
   CREATE_TRANSFERS: "CREATE_TRANSFERS",
-  REQUEST_WITHDRAWALS: "REQUEST_WITHDRAWALS",
+  CREATE_WITHDRAWALS: "CREATE_WITHDRAWALS",
   ADJUST_INVENTORY: "ADJUST_INVENTORY",
   CREATE_ITEMS: "CREATE_ITEMS",
 } as const
@@ -86,17 +86,17 @@ export function NavMain({ items }: NavMainProps) {
 
   // Quick create options based on user permissions
   const quickCreateOptions: QuickCreateOption[] = [
-    ...(hasPermission(PERMISSIONS.CREATE_PURCHASES) ? [{
-      title: "Purchase Order",
-      url: "/dashboard/purchases/create",
-      description: "Create a new purchase order"
+    ...(hasPermission(PERMISSIONS.CREATE_ITEM_ENTRIES) ? [{
+      title: "Item Entry",
+      url: "/dashboard/item-entries/create",
+      description: "Add new inventory items"
     }] : []),
     ...(hasPermission(PERMISSIONS.CREATE_TRANSFERS) ? [{
       title: "Stock Transfer",
       url: "/dashboard/transfers/create",
       description: "Transfer items between warehouses"
     }] : []),
-    ...(hasPermission(PERMISSIONS.REQUEST_WITHDRAWALS) ? [{
+    ...(hasPermission(PERMISSIONS.CREATE_WITHDRAWALS) ? [{
       title: "Withdrawal Request",
       url: "/dashboard/withdrawals/create",
       description: "Request items for production"

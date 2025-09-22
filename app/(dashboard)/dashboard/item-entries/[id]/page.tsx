@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { getItemEntryById } from "@/lib/actions/item-entry-actions"
 
 import { Loader2 } from "lucide-react"
+import { ItemEntryDetailView } from "@/components/items/item-entry-detail-view"
 
 interface ItemEntryDetailPageProps {
   params: Promise<{ id: string }>

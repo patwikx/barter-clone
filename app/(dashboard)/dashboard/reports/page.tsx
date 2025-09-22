@@ -1,14 +1,50 @@
 import { Suspense } from "react"
 import { getReportsData } from "@/lib/actions/reports-actions"
 import { ReportsView } from "@/components/reports/reports-view"
+import { prisma } from "@/lib/prisma"
+import { auth } from "@/auth"
 import { Loader2 } from "lucide-react"
 
-export default async function ReportsPage() {
-  const reportsResult = await getReportsData()
+async function getWarehousesAndSuppliers() {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { warehouses: [], suppliers: [] }
+  }
 
-  const reportsData = reportsResult.success 
-    ? reportsResult.data
-    : undefined
+  try {
+    const [warehouses, suppliers] = await Promise.all([
+      prisma.warehouse.findMany({
+        select: {
+          id: true,
+          name: true,
+          location: true
+        },
+        orderBy: { name: 'asc' }
+      }),
+      prisma.supplier.findMany({
+        select: {
+          id: true,
+          name: true
+        },
+        orderBy: { name: 'asc' }
+      })
+    ])
+
+    return { warehouses, suppliers }
+  } catch (error) {
+    console.error('Error fetching warehouses and suppliers:', error)
+    return { warehouses: [], suppliers: [] }
+  }
+}
+
+export default async function ReportsPage() {
+  // Fetch all required data in parallel
+  const [reportsResult, { warehouses, suppliers }] = await Promise.all([
+    getReportsData(),
+    getWarehousesAndSuppliers()
+  ])
+
+  const reportsData = reportsResult.success ? reportsResult.data : undefined
 
   if (!reportsResult.success) {
     return (
@@ -29,7 +65,11 @@ export default async function ReportsPage() {
         <Loader2 className="w-8 h-8 animate-spin" />
       </div>
     }>
-      <ReportsView initialData={reportsData} />
+      <ReportsView 
+        initialData={reportsData} 
+        warehouses={warehouses}
+        suppliers={suppliers}
+      />
     </Suspense>
   )
 }

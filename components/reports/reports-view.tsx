@@ -20,12 +20,15 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { getReportsData, type ReportsData } from "@/lib/actions/reports-actions"
 import { toast } from "sonner"
+import { ReportGenerator } from "./report-generator"
 
 interface ReportsViewProps {
   initialData?: ReportsData
+  warehouses?: Array<{ id: string; name: string; location: string | null }>
+  suppliers?: Array<{ id: string; name: string }>
 }
 
-export function ReportsView({ initialData }: ReportsViewProps) {
+export function ReportsView({ initialData, warehouses = [], suppliers = [] }: ReportsViewProps) {
   const [reportsData, setReportsData] = useState<ReportsData | undefined>(initialData)
   const [selectedReport, setSelectedReport] = useState("inventory")
   const [dateFrom, setDateFrom] = useState("")
@@ -219,29 +222,7 @@ export function ReportsView({ initialData }: ReportsViewProps) {
         </div>
 
         {/* Report Content */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-8 py-6 border-b border-gray-200 bg-gray-50/50">
-            <h3 className="text-xl font-bold text-gray-900 flex items-center">
-              <BarChart3 className="w-6 h-6 mr-3 text-blue-600" />
-              {selectedReport.charAt(0).toUpperCase() + selectedReport.slice(1)} Report
-            </h3>
-          </div>
-          <div className="p-8">
-            <div className="flex flex-col items-center justify-center py-16">
-              <div className="p-4 bg-gray-50 rounded-full mb-4">
-                <FileText className="w-12 h-12 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Report Generation</h3>
-              <p className="text-gray-500 text-center mb-8 max-w-sm">
-                Select your filters and click &quot;Generate Report&quot; to view detailed analytics and insights.
-              </p>
-              <Button onClick={handleRefresh} disabled={isPending}>
-                <BarChart3 className="w-4 h-4 mr-2" />
-                Generate {selectedReport.charAt(0).toUpperCase() + selectedReport.slice(1)} Report
-              </Button>
-            </div>
-          </div>
-        </div>
+        <ReportGenerator warehouses={warehouses} suppliers={suppliers} />
       </div>
     </div>
   )
