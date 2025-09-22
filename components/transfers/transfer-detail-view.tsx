@@ -7,9 +7,8 @@ import {
   User,
   Package,
   CheckCircle,
-  Clock,
-  XCircle,
   Truck,
+  XCircle,
   Edit,
   Trash2,
   FileText,
@@ -27,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { approveTransfer, deleteTransfer, type TransferWithDetails } from "@/lib/actions/transfer-actions"
+import { cancelTransfer, deleteTransfer, type TransferWithDetails } from "@/lib/actions/transfer-actions"
 import { TransferStatus } from "@prisma/client"
 import { toast } from "sonner"
 import Link from "next/link"
@@ -38,8 +37,6 @@ interface TransferDetailViewProps {
 
 const getStatusIcon = (status: TransferStatus) => {
   switch (status) {
-    case TransferStatus.PENDING:
-      return Clock
     case TransferStatus.IN_TRANSIT:
       return Truck
     case TransferStatus.COMPLETED:
@@ -47,14 +44,12 @@ const getStatusIcon = (status: TransferStatus) => {
     case TransferStatus.CANCELLED:
       return XCircle
     default:
-      return Clock
+      return CheckCircle
   }
 }
 
 const getStatusColor = (status: TransferStatus) => {
   switch (status) {
-    case TransferStatus.PENDING:
-      return "bg-yellow-100 text-yellow-800"
     case TransferStatus.IN_TRANSIT:
       return "bg-blue-100 text-blue-800"
     case TransferStatus.COMPLETED:
@@ -62,27 +57,27 @@ const getStatusColor = (status: TransferStatus) => {
     case TransferStatus.CANCELLED:
       return "bg-red-100 text-red-800"
     default:
-      return "bg-gray-100 text-gray-800"
+      return "bg-green-100 text-green-800"
   }
 }
 
 export function TransferDetailView({ initialTransfer }: TransferDetailViewProps) {
   const router = useRouter()
   const [transfer, setTransfer] = useState<TransferWithDetails>(initialTransfer)
-  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false)
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  const handleApproveTransfer = () => {
+  const handleCancelTransfer = () => {
     startTransition(async () => {
-      const result = await approveTransfer(transfer.id)
+      const result = await cancelTransfer(transfer.id)
 
       if (result.success && result.data) {
         setTransfer(result.data)
-        setIsApproveDialogOpen(false)
-        toast.success("Transfer approved and executed successfully")
+        setIsCancelDialogOpen(false)
+        toast.success("Transfer cancelled successfully")
       } else {
-        toast.error(result.error || "Failed to approve transfer")
+        toast.error(result.error || "Failed to cancel transfer")
       }
     })
   }
@@ -107,10 +102,10 @@ export function TransferDetailView({ initialTransfer }: TransferDetailViewProps)
   const StatusIcon = getStatusIcon(transfer.status)
   const createdByName = [transfer.createdBy.firstName, transfer.createdBy.lastName]
     .filter(Boolean).join(' ') || transfer.createdBy.username
-  const approvedByName = transfer.approvedBy 
-    ? [transfer.approvedBy.firstName, transfer.approvedBy.lastName]
-        .filter(Boolean).join(' ') || transfer.approvedBy.username
-    : null
+
+  const canModify = transfer.status !== TransferStatus.CANCELLED
+  const showCancelButton = transfer.status === TransferStatus.COMPLETED
+  const showDeleteButton = transfer.status === TransferStatus.CANCELLED
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -135,25 +130,31 @@ export function TransferDetailView({ initialTransfer }: TransferDetailViewProps)
             <p className="text-gray-600">Stock Transfer Details</p>
           </div>
           <div className="flex items-center gap-3">
-            {transfer.status === TransferStatus.PENDING && (
-              <>
-                <Button variant="outline">
-                  <Edit className="w-4 h-4 mr-2" />
-                  Edit Transfer
-                </Button>
-                <Button onClick={() => setIsApproveDialogOpen(true)} disabled={isPending}>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Approve Transfer
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => setIsDeleteDialogOpen(true)}
-                  disabled={isPending}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Transfer
-                </Button>
-              </>
+            {canModify && (
+              <Button variant="outline">
+                <Edit className="w-4 h-4 mr-2" />
+                Edit Transfer
+              </Button>
+            )}
+            {showCancelButton && (
+              <Button
+                variant="destructive"
+                onClick={() => setIsCancelDialogOpen(true)}
+                disabled={isPending}
+              >
+                <XCircle className="w-4 h-4 mr-2" />
+                Cancel Transfer
+              </Button>
+            )}
+            {showDeleteButton && (
+              <Button
+                variant="destructive"
+                onClick={() => setIsDeleteDialogOpen(true)}
+                disabled={isPending}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Transfer
+              </Button>
             )}
           </div>
         </div>
@@ -247,18 +248,6 @@ export function TransferDetailView({ initialTransfer }: TransferDetailViewProps)
                       })}
                     </span>
                   </div>
-                  {transfer.approvedAt && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-600">Approved</span>
-                      <span className="text-sm font-semibold text-gray-900">
-                        {transfer.approvedAt.toLocaleDateString('en-PH', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </span>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -323,23 +312,10 @@ export function TransferDetailView({ initialTransfer }: TransferDetailViewProps)
                 <User className="w-5 h-5 mr-2 text-gray-600" />
                 User Information
               </h3>
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium text-gray-600 mb-1">Created By</h4>
-                  <p className="text-base font-semibold text-gray-900">{createdByName}</p>
-                  <p className="text-sm text-gray-500">@{transfer.createdBy.username}</p>
-                </div>
-                
-                {approvedByName && (
-                  <>
-                    <Separator />
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-600 mb-1">Approved By</h4>
-                      <p className="text-base font-semibold text-gray-900">{approvedByName}</p>
-                      <p className="text-sm text-gray-500">@{transfer.approvedBy?.username}</p>
-                    </div>
-                  </>
-                )}
+              <div>
+                <h4 className="text-sm font-medium text-gray-600 mb-1">Created By</h4>
+                <p className="text-base font-semibold text-gray-900">{createdByName}</p>
+                <p className="text-sm text-gray-500">@{transfer.createdBy.username}</p>
               </div>
             </div>
 
@@ -354,34 +330,34 @@ export function TransferDetailView({ initialTransfer }: TransferDetailViewProps)
         </div>
       </div>
 
-      {/* Approve Dialog */}
-      <Dialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
+      {/* Cancel Dialog */}
+      <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Approve Transfer</DialogTitle>
+            <DialogTitle>Cancel Transfer</DialogTitle>
             <DialogDescription>
-              Are you sure you want to approve transfer {transfer.transferNumber}? 
-              This will execute the transfer and update inventory levels in both warehouses.
+              Are you sure you want to cancel transfer {transfer.transferNumber}? 
+              This will reverse the inventory movements and restore stock levels to both warehouses.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setIsApproveDialogOpen(false)}
+              onClick={() => setIsCancelDialogOpen(false)}
               disabled={isPending}
             >
-              Cancel
+              No, Keep Transfer
             </Button>
-            <Button onClick={handleApproveTransfer} disabled={isPending}>
+            <Button variant="destructive" onClick={handleCancelTransfer} disabled={isPending}>
               {isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Approving...
+                  Cancelling...
                 </>
               ) : (
                 <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Approve Transfer
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Yes, Cancel Transfer
                 </>
               )}
             </Button>
@@ -396,7 +372,7 @@ export function TransferDetailView({ initialTransfer }: TransferDetailViewProps)
             <DialogTitle>Delete Transfer</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete transfer {transfer.transferNumber}? 
-              This action cannot be undone.
+              This action cannot be undone. Only cancelled transfers can be deleted.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

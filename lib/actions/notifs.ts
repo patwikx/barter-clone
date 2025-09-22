@@ -3,9 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
-
-// Define notification types
-export type NotificationType = 'INFO' | 'WARNING' | 'ERROR' | 'SUCCESS'
+import { NotificationType } from "@prisma/client"
 
 export interface NotificationData {
   id: string
@@ -80,7 +78,7 @@ export async function getUserNotifications(
       id: notification.id,
       title: notification.title,
       message: notification.message,
-      type: notification.type as NotificationType,
+      type: notification.type,
       isRead: notification.isRead,
       createdAt: notification.createdAt.toISOString(),
       referenceId: notification.referenceId || undefined,
@@ -223,7 +221,7 @@ export async function createLowStockNotification(itemId: string, currentQuantity
     const notifications = usersToNotify.map(user => ({
       title: 'Low Stock Alert',
       message: `${item.description} (${item.itemCode}) is below reorder level. Current: ${currentQuantity}, Reorder Level: ${reorderLevel}`,
-      type: 'WARNING' as NotificationType,
+      type: NotificationType.WARNING,
       userId: user.id,
       referenceId: itemId,
       referenceType: 'ITEM',
@@ -242,73 +240,72 @@ export async function createLowStockNotification(itemId: string, currentQuantity
   }
 }
 
-// Create purchase order notifications
-export async function createPurchaseOrderNotification(
-  purchaseOrderId: string, 
-  action: 'CREATED' | 'APPROVED' | 'RECEIVED',
+// Create item entry notifications (replaces purchase order notifications)
+export async function createItemEntryNotification(
+  itemEntryId: string, 
+  action: 'CREATED' | 'RECEIVED',
   createdById?: string
 ) {
   try {
-    const purchase = await prisma.purchase.findUnique({
-      where: { id: purchaseOrderId },
+    const itemEntry = await prisma.itemEntry.findUnique({
+      where: { id: itemEntryId },
       include: {
         supplier: true,
+        item: true,
         createdBy: true,
+        warehouse: true,
       }
     })
 
-    if (!purchase) {
-      throw new Error("Purchase order not found")
+    if (!itemEntry) {
+      throw new Error("Item entry not found")
     }
 
     let title: string
     let message: string
-    let type: NotificationType = 'INFO'
+    let type: NotificationType = NotificationType.INFO
     let usersToNotify: string[] = []
 
     switch (action) {
       case 'CREATED':
-        title = 'Purchase Order Created'
-        message = `Purchase Order ${purchase.purchaseOrder} has been created for ${purchase.supplier.name}`
-        // Notify approvers
-        const approvers = await prisma.user.findMany({
+        title = 'New Item Entry Created'
+        message = `New stock received: ${itemEntry.item.description} (${itemEntry.quantity} ${itemEntry.item.unitOfMeasure}) from ${itemEntry.supplier.name} at ${itemEntry.warehouse.name}`
+        type = NotificationType.SUCCESS
+        // Notify warehouse managers and inventory clerks
+        const warehouseTeam = await prisma.user.findMany({
           where: {
-            role: { in: ['ADMIN', 'SUPER_ADMIN', 'WAREHOUSE_MANAGER'] },
+            role: { in: ['ADMIN', 'SUPER_ADMIN', 'WAREHOUSE_MANAGER', 'INVENTORY_CLERK'] },
             isActive: true,
           },
           select: { id: true }
         })
-        usersToNotify = approvers.map(u => u.id)
-        break
-
-      case 'APPROVED':
-        title = 'Purchase Order Approved'
-        message = `Purchase Order ${purchase.purchaseOrder} has been approved`
-        type = 'SUCCESS'
-        // Notify creator and purchasing team
-        const purchasingTeam = await prisma.user.findMany({
-          where: {
-            role: { in: ['PURCHASER', 'INVENTORY_CLERK'] },
-            isActive: true,
-          },
-          select: { id: true }
-        })
-        usersToNotify = [purchase.createdById, ...purchasingTeam.map(u => u.id)]
+        usersToNotify = warehouseTeam.map(u => u.id)
         break
 
       case 'RECEIVED':
-        title = 'Purchase Order Received'
-        message = `Purchase Order ${purchase.purchaseOrder} has been received and processed`
-        type = 'SUCCESS'
-        // Notify creator and warehouse team
-        const warehouseTeam = await prisma.user.findMany({
+        title = 'Item Entry Processed'
+        message = `Item entry for ${itemEntry.item.description} has been processed and added to inventory`
+        type = NotificationType.SUCCESS
+        // Notify relevant warehouse staff
+        const relevantUsers = await prisma.user.findMany({
           where: {
-            role: { in: ['WAREHOUSE_MANAGER', 'INVENTORY_CLERK'] },
-            isActive: true,
+            OR: [
+              {
+                role: { in: ['WAREHOUSE_MANAGER', 'INVENTORY_CLERK'] },
+                isActive: true,
+              },
+              {
+                assignedWarehouses: {
+                  some: {
+                    warehouseId: itemEntry.warehouseId
+                  }
+                }
+              }
+            ]
           },
           select: { id: true }
         })
-        usersToNotify = [purchase.createdById, ...warehouseTeam.map(u => u.id)]
+        usersToNotify = relevantUsers.map(u => u.id)
         break
     }
 
@@ -321,8 +318,8 @@ export async function createPurchaseOrderNotification(
         message,
         type,
         userId,
-        referenceId: purchaseOrderId,
-        referenceType: 'PURCHASE',
+        referenceId: itemEntryId,
+        referenceType: 'ITEM_ENTRY',
         isRead: false,
       }))
 
@@ -334,7 +331,201 @@ export async function createPurchaseOrderNotification(
     revalidatePath("/")
     return { success: true }
   } catch (error) {
-    console.error("Failed to create purchase order notification:", error)
-    return { success: false, error: "Failed to create purchase order notification" }
+    console.error("Failed to create item entry notification:", error)
+    return { success: false, error: "Failed to create item entry notification" }
+  }
+}
+
+// Create transfer notifications
+export async function createTransferNotification(
+  transferId: string,
+  action: 'CREATED' | 'IN_TRANSIT' | 'COMPLETED' | 'CANCELLED',
+  actionById?: string
+) {
+  try {
+    const transfer = await prisma.transfer.findUnique({
+      where: { id: transferId },
+      include: {
+        fromWarehouse: true,
+        toWarehouse: true,
+        createdBy: true,
+        transferItems: {
+          include: {
+            item: true
+          }
+        }
+      }
+    })
+
+    if (!transfer) {
+      throw new Error("Transfer not found")
+    }
+
+    let title: string
+    let message: string
+    let type: NotificationType = NotificationType.INFO
+
+    switch (action) {
+      case 'CREATED':
+        title = 'Transfer Created'
+        message = `Transfer ${transfer.transferNumber} created: ${transfer.fromWarehouse.name} → ${transfer.toWarehouse.name}`
+        type = NotificationType.INFO
+        break
+      case 'IN_TRANSIT':
+        title = 'Transfer In Transit'
+        message = `Transfer ${transfer.transferNumber} is now in transit`
+        type = NotificationType.INFO
+        break
+      case 'COMPLETED':
+        title = 'Transfer Completed'
+        message = `Transfer ${transfer.transferNumber} has been completed successfully`
+        type = NotificationType.SUCCESS
+        break
+      case 'CANCELLED':
+        title = 'Transfer Cancelled'
+        message = `Transfer ${transfer.transferNumber} has been cancelled`
+        type = NotificationType.WARNING
+        break
+    }
+
+    // Get users associated with both warehouses
+    const usersToNotify = await prisma.user.findMany({
+      where: {
+        OR: [
+          {
+            assignedWarehouses: {
+              some: {
+                warehouseId: { in: [transfer.fromWarehouseId, transfer.toWarehouseId] }
+              }
+            }
+          },
+          {
+            role: { in: ['ADMIN', 'SUPER_ADMIN', 'WAREHOUSE_MANAGER'] },
+            isActive: true,
+          }
+        ]
+      },
+      select: { id: true }
+    })
+
+    // Remove duplicates and exclude the person who triggered the action
+    const uniqueUsers = [...new Set(usersToNotify.map(u => u.id))].filter(userId => userId !== actionById)
+
+    if (uniqueUsers.length > 0) {
+      const notifications = uniqueUsers.map(userId => ({
+        title,
+        message,
+        type,
+        userId,
+        referenceId: transferId,
+        referenceType: 'TRANSFER',
+        isRead: false,
+      }))
+
+      await prisma.notification.createMany({
+        data: notifications,
+      })
+    }
+
+    revalidatePath("/")
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to create transfer notification:", error)
+    return { success: false, error: "Failed to create transfer notification" }
+  }
+}
+
+// Create withdrawal notifications
+export async function createWithdrawalNotification(
+  withdrawalId: string,
+  action: 'CREATED' | 'COMPLETED' | 'CANCELLED',
+  actionById?: string
+) {
+  try {
+    const withdrawal = await prisma.withdrawal.findUnique({
+      where: { id: withdrawalId },
+      include: {
+        warehouse: true,
+        createdBy: true,
+        withdrawalItems: {
+          include: {
+            item: true
+          }
+        }
+      }
+    })
+
+    if (!withdrawal) {
+      throw new Error("Withdrawal not found")
+    }
+
+    let title: string
+    let message: string
+    let type: NotificationType = NotificationType.INFO
+
+    const itemCount = withdrawal.withdrawalItems.length
+
+    switch (action) {
+      case 'CREATED':
+        title = 'Withdrawal Created'
+        message = `Withdrawal ${withdrawal.withdrawalNumber} created: ${itemCount} item(s) from ${withdrawal.warehouse.name}`
+        type = NotificationType.INFO
+        break
+      case 'COMPLETED':
+        title = 'Withdrawal Completed'
+        message = `Withdrawal ${withdrawal.withdrawalNumber} has been completed`
+        type = NotificationType.SUCCESS
+        break
+      case 'CANCELLED':
+        title = 'Withdrawal Cancelled'
+        message = `Withdrawal ${withdrawal.withdrawalNumber} has been cancelled`
+        type = NotificationType.WARNING
+        break
+    }
+
+    // Get users associated with the warehouse
+    const usersToNotify = await prisma.user.findMany({
+      where: {
+        OR: [
+          {
+            assignedWarehouses: {
+              some: {
+                warehouseId: withdrawal.warehouseId
+              }
+            }
+          },
+          {
+            role: { in: ['ADMIN', 'SUPER_ADMIN', 'WAREHOUSE_MANAGER', 'INVENTORY_CLERK'] },
+            isActive: true,
+          }
+        ]
+      },
+      select: { id: true }
+    })
+
+    // Remove duplicates and exclude the person who triggered the action
+    const uniqueUsers = [...new Set(usersToNotify.map(u => u.id))].filter(userId => userId !== actionById)
+
+    if (uniqueUsers.length > 0) {
+      const notifications = uniqueUsers.map(userId => ({
+        title,
+        message,
+        type,
+        userId,
+        referenceId: withdrawalId,
+        referenceType: 'WITHDRAWAL',
+        isRead: false,
+      }))
+
+      await prisma.notification.createMany({
+        data: notifications,
+      })
+    }
+
+    revalidatePath("/")
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to create withdrawal notification:", error)
+    return { success: false, error: "Failed to create withdrawal notification" }
   }
 }

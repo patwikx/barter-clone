@@ -13,7 +13,6 @@ export interface TransferWithDetails {
   notes: string | null
   createdAt: Date
   updatedAt: Date
-  approvedAt: Date | null
   fromWarehouse: {
     id: string
     name: string
@@ -30,12 +29,6 @@ export interface TransferWithDetails {
     firstName: string | null
     lastName: string | null
   }
-  approvedBy: {
-    id: string
-    username: string
-    firstName: string | null
-    lastName: string | null
-  } | null
   transferItems: Array<{
     id: string
     quantity: number
@@ -81,9 +74,9 @@ export interface TransferFilters {
 
 export interface TransferStats {
   totalTransfers: number
-  pendingTransfers: number
   completedTransfers: number
   inTransitTransfers: number
+  cancelledTransfers: number
 }
 
 // Include type for transfer queries
@@ -103,14 +96,6 @@ const transferInclude = {
     }
   },
   createdBy: {
-    select: {
-      id: true,
-      username: true,
-      firstName: true,
-      lastName: true
-    }
-  },
-  approvedBy: {
     select: {
       id: true,
       username: true,
@@ -168,11 +153,9 @@ function transformTransfer(transfer: RawTransferWithDetails): TransferWithDetail
     notes: transfer.notes,
     createdAt: transfer.createdAt,
     updatedAt: transfer.updatedAt,
-    approvedAt: transfer.approvedAt,
     fromWarehouse: transfer.fromWarehouse,
     toWarehouse: transfer.toWarehouse,
     createdBy: transfer.createdBy,
-    approvedBy: transfer.approvedBy,
     transferItems: transfer.transferItems.map(item => ({
       id: item.id,
       quantity: Number(item.quantity),
@@ -254,12 +237,12 @@ export async function getTransfers(
 
     const transformedTransfers = transfers.map(transformTransfer)
 
-    // Calculate stats
+    // Calculate stats (no PENDING status since removed)
     const stats: TransferStats = {
       totalTransfers: transfers.length,
-      pendingTransfers: transfers.filter(t => t.status === TransferStatus.PENDING).length,
       completedTransfers: transfers.filter(t => t.status === TransferStatus.COMPLETED).length,
       inTransitTransfers: transfers.filter(t => t.status === TransferStatus.IN_TRANSIT).length,
+      cancelledTransfers: transfers.filter(t => t.status === TransferStatus.CANCELLED).length,
     }
 
     return {
@@ -277,7 +260,7 @@ export async function getTransfers(
   }
 }
 
-// Create new transfer
+// Create new transfer (automatically completed)
 export async function createTransfer(data: CreateTransferInput): Promise<{
   success: boolean
   data?: TransferWithDetails
@@ -289,9 +272,27 @@ export async function createTransfer(data: CreateTransferInput): Promise<{
       return { success: false, error: "Unauthorized" }
     }
 
+    // Validate input
+    if (!data.transferItems || data.transferItems.length === 0) {
+      return { success: false, error: "At least one item is required for transfer" }
+    }
+
     // Validate that from and to warehouses are different
     if (data.fromWarehouseId === data.toWarehouseId) {
       return { success: false, error: "Source and destination warehouses must be different" }
+    }
+
+    // Validate warehouse existence
+    const [fromWarehouse, toWarehouse] = await Promise.all([
+      prisma.warehouse.findUnique({ where: { id: data.fromWarehouseId } }),
+      prisma.warehouse.findUnique({ where: { id: data.toWarehouseId } })
+    ])
+
+    if (!fromWarehouse) {
+      return { success: false, error: "Source warehouse not found" }
+    }
+    if (!toWarehouse) {
+      return { success: false, error: "Destination warehouse not found" }
     }
 
     // Generate transfer number
@@ -311,141 +312,107 @@ export async function createTransfer(data: CreateTransferInput): Promise<{
     const currentYear = new Date().getFullYear()
     const transferNumber = `TRF-${currentYear}-${nextNumber.toString().padStart(3, '0')}`
 
-    const transfer = await prisma.transfer.create({
-      data: {
-        transferNumber,
-        status: TransferStatus.PENDING,
-        notes: data.notes,
-        fromWarehouseId: data.fromWarehouseId,
-        toWarehouseId: data.toWarehouseId,
-        createdById: session.user.id,
-        transferItems: {
-          create: data.transferItems.map(item => ({
-            itemId: item.itemId,
-            quantity: item.quantity
-          }))
-        }
-      },
-      include: transferInclude
-    })
-
-    revalidatePath('/dashboard/transfers')
-    
-    return {
-      success: true,
-      data: transformTransfer(transfer)
-    }
-
-  } catch (error) {
-    console.error('Error creating transfer:', error)
-    return {
-      success: false,
-      error: 'Failed to create transfer'
-    }
-  }
-}
-
-// Approve and execute transfer
-export async function approveTransfer(transferId: string): Promise<{
-  success: boolean
-  data?: TransferWithDetails
-  error?: string
-}> {
-  try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return { success: false, error: "Unauthorized" }
-    }
-
-    // Get transfer details with warehouse relations
-    const transfer = await prisma.transfer.findUnique({
-      where: { id: transferId },
-      include: {
-        fromWarehouse: {
-          select: {
-            id: true,
-            name: true,
-            location: true
-          }
-        },
-        toWarehouse: {
-          select: {
-            id: true,
-            name: true,
-            location: true
-          }
-        },
-        transferItems: {
-          include: {
-            item: true
-          }
-        }
-      }
-    })
-
-    if (!transfer) {
-      return { success: false, error: "Transfer not found" }
-    }
-
-    if (transfer.status !== TransferStatus.PENDING) {
-      return { success: false, error: "Transfer is not in pending status" }
-    }
-
-    // Start transaction to update transfer and create inventory movements
+    // Execute transfer in transaction (auto-complete)
     const result = await prisma.$transaction(async (tx) => {
-      // Update transfer status
-      const updatedTransfer = await tx.transfer.update({
-        where: { id: transferId },
+      // Create transfer with COMPLETED status
+      const transfer = await tx.transfer.create({
         data: {
+          transferNumber,
           status: TransferStatus.COMPLETED,
-          approvedById: session.user.id,
-          approvedAt: new Date()
+          notes: data.notes,
+          fromWarehouseId: data.fromWarehouseId,
+          toWarehouseId: data.toWarehouseId,
+          createdById: session.user.id,
+          transferItems: {
+            create: data.transferItems.map(item => ({
+              itemId: item.itemId,
+              quantity: item.quantity
+            }))
+          }
         },
-        include: transferInclude
+        include: {
+          fromWarehouse: { select: { id: true, name: true, location: true } },
+          toWarehouse: { select: { id: true, name: true, location: true } },
+          transferItems: {
+            include: {
+              item: {
+                select: {
+                  id: true,
+                  itemCode: true,
+                  description: true,
+                  unitOfMeasure: true,
+                  costingMethod: true
+                }
+              }
+            }
+          }
+        }
       })
 
-      // Create inventory movements for each item
+      // Process inventory movements for each item
       for (const transferItem of transfer.transferItems) {
-        // Get current inventory for cost calculation
+        // Check inventory availability
         const currentInventory = await tx.currentInventory.findUnique({
           where: {
             itemId_warehouseId: {
               itemId: transferItem.itemId,
-              warehouseId: transfer.fromWarehouseId
+              warehouseId: data.fromWarehouseId
             }
           }
         })
 
-        if (!currentInventory || Number(currentInventory.quantity) < Number(transferItem.quantity)) {
-          throw new Error(`Insufficient inventory for item ${transferItem.item.itemCode}`)
+        if (!currentInventory) {
+          throw new Error(`Item ${transferItem.item.itemCode} not found in source warehouse`)
+        }
+
+        if (Number(currentInventory.quantity) < Number(transferItem.quantity)) {
+          throw new Error(`Insufficient inventory for item ${transferItem.item.itemCode}. Available: ${Number(currentInventory.quantity)}, Requested: ${Number(transferItem.quantity)}`)
         }
 
         const unitCost = Number(currentInventory.avgUnitCost)
         const totalValue = Number(transferItem.quantity) * unitCost
 
         // Create transfer out movement
+        const newFromQuantity = Number(currentInventory.quantity) - Number(transferItem.quantity)
+        const newFromValue = Number(currentInventory.totalValue) - totalValue
+
         await tx.inventoryMovement.create({
           data: {
             movementType: MovementType.TRANSFER_OUT,
             quantity: -Number(transferItem.quantity),
             unitCost,
             totalValue: -totalValue,
-            referenceId: transferId,
+            referenceId: transfer.id,
             notes: `Transfer to ${transfer.toWarehouse.name}`,
             itemId: transferItem.itemId,
-            warehouseId: transfer.fromWarehouseId,
-            balanceQuantity: Number(currentInventory.quantity) - Number(transferItem.quantity),
-            balanceValue: Number(currentInventory.totalValue) - totalValue,
+            warehouseId: data.fromWarehouseId,
+            balanceQuantity: newFromQuantity,
+            balanceValue: newFromValue,
             costMethod: transferItem.item.costingMethod
           }
         })
 
-        // Create transfer in movement
+        // Update source warehouse inventory
+        await tx.currentInventory.update({
+          where: {
+            itemId_warehouseId: {
+              itemId: transferItem.itemId,
+              warehouseId: data.fromWarehouseId
+            }
+          },
+          data: {
+            quantity: newFromQuantity,
+            totalValue: newFromValue,
+            avgUnitCost: newFromQuantity > 0 ? newFromValue / newFromQuantity : 0
+          }
+        })
+
+        // Handle destination warehouse inventory
         const toInventory = await tx.currentInventory.findUnique({
           where: {
             itemId_warehouseId: {
               itemId: transferItem.itemId,
-              warehouseId: transfer.toWarehouseId
+              warehouseId: data.toWarehouseId
             }
           }
         })
@@ -453,43 +420,29 @@ export async function approveTransfer(transferId: string): Promise<{
         const newToQuantity = Number(toInventory?.quantity || 0) + Number(transferItem.quantity)
         const newToValue = Number(toInventory?.totalValue || 0) + totalValue
 
+        // Create transfer in movement
         await tx.inventoryMovement.create({
           data: {
             movementType: MovementType.TRANSFER_IN,
             quantity: Number(transferItem.quantity),
             unitCost,
             totalValue,
-            referenceId: transferId,
+            referenceId: transfer.id,
             notes: `Transfer from ${transfer.fromWarehouse.name}`,
             itemId: transferItem.itemId,
-            warehouseId: transfer.toWarehouseId,
+            warehouseId: data.toWarehouseId,
             balanceQuantity: newToQuantity,
             balanceValue: newToValue,
             costMethod: transferItem.item.costingMethod
           }
         })
 
-        // Update current inventory for source warehouse
-        await tx.currentInventory.update({
-          where: {
-            itemId_warehouseId: {
-              itemId: transferItem.itemId,
-              warehouseId: transfer.fromWarehouseId
-            }
-          },
-          data: {
-            quantity: Number(currentInventory.quantity) - Number(transferItem.quantity),
-            totalValue: Number(currentInventory.totalValue) - totalValue,
-            avgUnitCost: unitCost
-          }
-        })
-
-        // Update or create current inventory for destination warehouse
+        // Update or create destination warehouse inventory
         await tx.currentInventory.upsert({
           where: {
             itemId_warehouseId: {
               itemId: transferItem.itemId,
-              warehouseId: transfer.toWarehouseId
+              warehouseId: data.toWarehouseId
             }
           },
           update: {
@@ -499,7 +452,7 @@ export async function approveTransfer(transferId: string): Promise<{
           },
           create: {
             itemId: transferItem.itemId,
-            warehouseId: transfer.toWarehouseId,
+            warehouseId: data.toWarehouseId,
             quantity: Number(transferItem.quantity),
             totalValue,
             avgUnitCost: unitCost
@@ -507,22 +460,31 @@ export async function approveTransfer(transferId: string): Promise<{
         })
       }
 
-      return updatedTransfer
+      return transfer
     })
 
+    // Get the full transfer data for response
+    const fullTransfer = await prisma.transfer.findUnique({
+      where: { id: result.id },
+      include: transferInclude
+    })
+
+    if (!fullTransfer) {
+      throw new Error("Failed to retrieve created transfer")
+    }
+
     revalidatePath('/dashboard/transfers')
-    revalidatePath(`/dashboard/transfers/${transferId}`)
     
     return {
       success: true,
-      data: transformTransfer(result)
+      data: transformTransfer(fullTransfer)
     }
 
   } catch (error) {
-    console.error('Error approving transfer:', error)
+    console.error('Error creating transfer:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to approve transfer'
+      error: error instanceof Error ? error.message : 'Failed to create transfer'
     }
   }
 }
@@ -562,7 +524,63 @@ export async function getTransferById(transferId: string): Promise<{
   }
 }
 
-// Delete transfer
+// Cancel transfer (only if IN_TRANSIT)
+export async function cancelTransfer(transferId: string): Promise<{
+  success: boolean
+  data?: TransferWithDetails
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // Check transfer status
+    const existingTransfer = await prisma.transfer.findUnique({
+      where: { id: transferId },
+      select: { status: true }
+    })
+
+    if (!existingTransfer) {
+      return { success: false, error: "Transfer not found" }
+    }
+
+    if (existingTransfer.status === TransferStatus.COMPLETED) {
+      return { success: false, error: "Cannot cancel completed transfer" }
+    }
+
+    if (existingTransfer.status === TransferStatus.CANCELLED) {
+      return { success: false, error: "Transfer is already cancelled" }
+    }
+
+    const updatedTransfer = await prisma.transfer.update({
+      where: { id: transferId },
+      data: {
+        status: TransferStatus.CANCELLED,
+        updatedAt: new Date()
+      },
+      include: transferInclude
+    })
+
+    revalidatePath('/dashboard/transfers')
+    revalidatePath(`/dashboard/transfers/${transferId}`)
+
+    return {
+      success: true,
+      data: transformTransfer(updatedTransfer)
+    }
+
+  } catch (error) {
+    console.error('Error cancelling transfer:', error)
+    return {
+      success: false,
+      error: 'Failed to cancel transfer'
+    }
+  }
+}
+
+// Delete transfer (only if cancelled)
 export async function deleteTransfer(transferId: string): Promise<{
   success: boolean
   error?: string
@@ -584,7 +602,11 @@ export async function deleteTransfer(transferId: string): Promise<{
     }
 
     if (transfer.status === TransferStatus.COMPLETED) {
-      return { success: false, error: "Cannot delete completed transfer" }
+      return { success: false, error: "Cannot delete completed transfer. Completed transfers must be kept for audit purposes." }
+    }
+
+    if (transfer.status === TransferStatus.IN_TRANSIT) {
+      return { success: false, error: "Cannot delete transfer in transit. Please cancel the transfer first." }
     }
 
     await prisma.transfer.delete({
@@ -645,6 +667,7 @@ export async function getItemsForTransfer(warehouseId: string): Promise<{
     description: string
     unitOfMeasure: string
     availableQuantity: number
+    avgUnitCost: number
   }>
   error?: string
 }> {
@@ -663,6 +686,11 @@ export async function getItemsForTransfer(warehouseId: string): Promise<{
             unitOfMeasure: true
           }
         }
+      },
+      orderBy: {
+        item: {
+          itemCode: 'asc'
+        }
       }
     })
 
@@ -671,7 +699,8 @@ export async function getItemsForTransfer(warehouseId: string): Promise<{
       itemCode: inv.item.itemCode,
       description: inv.item.description,
       unitOfMeasure: inv.item.unitOfMeasure,
-      availableQuantity: Number(inv.quantity)
+      availableQuantity: Number(inv.quantity),
+      avgUnitCost: Number(inv.avgUnitCost)
     }))
 
     return {

@@ -6,7 +6,6 @@ import {
   User,
   Package,
   CheckCircle,
-  Clock,
   XCircle,
   Edit,
   Trash2,
@@ -26,7 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { approveWithdrawal, deleteWithdrawal, type WithdrawalWithDetails } from "@/lib/actions/withdrawal-actions"
+import { cancelWithdrawal, deleteWithdrawal, type WithdrawalWithDetails } from "@/lib/actions/withdrawal-actions"
 import { WithdrawalStatus } from "@prisma/client"
 import { toast } from "sonner"
 import Link from "next/link"
@@ -37,28 +36,20 @@ interface WithdrawalDetailViewProps {
 
 const getStatusIcon = (status: WithdrawalStatus) => {
   switch (status) {
-    case WithdrawalStatus.PENDING:
-      return Clock
-    case WithdrawalStatus.APPROVED:
-      return CheckCircle
     case WithdrawalStatus.COMPLETED:
       return CheckCircle
-    case WithdrawalStatus.REJECTED:
+    case WithdrawalStatus.CANCELLED:
       return XCircle
     default:
-      return Clock
+      return CheckCircle
   }
 }
 
 const getStatusColor = (status: WithdrawalStatus) => {
   switch (status) {
-    case WithdrawalStatus.PENDING:
-      return "bg-yellow-100 text-yellow-800"
-    case WithdrawalStatus.APPROVED:
-      return "bg-blue-100 text-blue-800"
     case WithdrawalStatus.COMPLETED:
       return "bg-green-100 text-green-800"
-    case WithdrawalStatus.REJECTED:
+    case WithdrawalStatus.CANCELLED:
       return "bg-red-100 text-red-800"
     default:
       return "bg-gray-100 text-gray-800"
@@ -68,20 +59,20 @@ const getStatusColor = (status: WithdrawalStatus) => {
 export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailViewProps) {
   const router = useRouter()
   const [withdrawal, setWithdrawal] = useState<WithdrawalWithDetails>(initialWithdrawal)
-  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false)
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  const handleApproveWithdrawal = () => {
+  const handleCancelWithdrawal = () => {
     startTransition(async () => {
-      const result = await approveWithdrawal(withdrawal.id)
+      const result = await cancelWithdrawal(withdrawal.id)
 
       if (result.success && result.data) {
         setWithdrawal(result.data)
-        setIsApproveDialogOpen(false)
-        toast.success("Withdrawal approved and completed successfully")
+        setIsCancelDialogOpen(false)
+        toast.success("Withdrawal cancelled successfully")
       } else {
-        toast.error(result.error || "Failed to approve withdrawal")
+        toast.error(result.error || "Failed to cancel withdrawal")
       }
     })
   }
@@ -113,14 +104,10 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
   }
 
   const StatusIcon = getStatusIcon(withdrawal.status)
-  const requestedByName = [withdrawal.requestedBy.firstName, withdrawal.requestedBy.lastName]
-    .filter(Boolean).join(' ') || withdrawal.requestedBy.username
-  const approvedByName = withdrawal.approvedBy 
-    ? [withdrawal.approvedBy.firstName, withdrawal.approvedBy.lastName]
-        .filter(Boolean).join(' ') || withdrawal.approvedBy.username
-    : null
+  const createdByName = [withdrawal.createdBy.firstName, withdrawal.createdBy.lastName]
+    .filter(Boolean).join(' ') || withdrawal.createdBy.username
 
-  const totalValue = withdrawal.withdrawalItems.reduce((sum, item) => sum + item.totalValue, 0)
+  const totalValue = withdrawal.withdrawalItems.reduce((sum, item) => sum + Number(item.totalValue), 0)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -145,25 +132,31 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
             <p className="text-gray-600">Material Withdrawal Details</p>
           </div>
           <div className="flex items-center gap-3">
-            {withdrawal.status === WithdrawalStatus.PENDING && (
+            {withdrawal.status === WithdrawalStatus.COMPLETED && (
               <>
                 <Button variant="outline">
                   <Edit className="w-4 h-4 mr-2" />
                   Edit Withdrawal
                 </Button>
-                <Button onClick={() => setIsApproveDialogOpen(true)} disabled={isPending}>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Approve Withdrawal
-                </Button>
                 <Button
                   variant="destructive"
-                  onClick={() => setIsDeleteDialogOpen(true)}
+                  onClick={() => setIsCancelDialogOpen(true)}
                   disabled={isPending}
                 >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Withdrawal
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Cancel Withdrawal
                 </Button>
               </>
+            )}
+            {withdrawal.status === WithdrawalStatus.CANCELLED && (
+              <Button
+                variant="destructive"
+                onClick={() => setIsDeleteDialogOpen(true)}
+                disabled={isPending}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Withdrawal
+              </Button>
             )}
           </div>
         </div>
@@ -205,17 +198,17 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
                         </td>
                         <td className="py-4 px-6 whitespace-nowrap text-right">
                           <div className="text-sm font-medium text-gray-900">
-                            {formatNumber(item.quantity)}
+                            {formatNumber(Number(item.quantity))}
                           </div>
                         </td>
                         <td className="py-4 px-6 whitespace-nowrap text-right">
                           <div className="text-sm font-medium text-gray-900">
-                            {formatCurrency(item.unitCost)}
+                            {formatCurrency(Number(item.unitCost))}
                           </div>
                         </td>
                         <td className="py-4 px-6 whitespace-nowrap text-right">
                           <div className="text-sm font-semibold text-gray-900">
-                            {formatCurrency(item.totalValue)}
+                            {formatCurrency(Number(item.totalValue))}
                           </div>
                         </td>
                       </tr>
@@ -269,18 +262,16 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
                       })}
                     </span>
                   </div>
-                  {withdrawal.approvedAt && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-600">Approved</span>
-                      <span className="text-sm font-semibold text-gray-900">
-                        {withdrawal.approvedAt.toLocaleDateString('en-PH', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-600">Last Updated</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {withdrawal.updatedAt.toLocaleDateString('en-PH', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -296,6 +287,9 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
                   <h4 className="text-base font-semibold text-gray-900">{withdrawal.warehouse.name}</h4>
                   {withdrawal.warehouse.location && (
                     <p className="text-sm text-gray-600 mt-1">{withdrawal.warehouse.location}</p>
+                  )}
+                  {withdrawal.warehouse.description && (
+                    <p className="text-xs text-gray-500 mt-1">{withdrawal.warehouse.description}</p>
                   )}
                 </div>
               </div>
@@ -315,7 +309,7 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-600">Total Quantity</span>
                   <span className="text-sm font-semibold text-gray-900">
-                    {formatNumber(withdrawal.withdrawalItems.reduce((sum, item) => sum + item.quantity, 0))}
+                    {formatNumber(withdrawal.withdrawalItems.reduce((sum, item) => sum + Number(item.quantity), 0))}
                   </span>
                 </div>
                 <Separator />
@@ -334,21 +328,16 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
               </h3>
               <div className="space-y-4">
                 <div>
-                  <h4 className="text-sm font-medium text-gray-600 mb-1">Requested By</h4>
-                  <p className="text-base font-semibold text-gray-900">{requestedByName}</p>
-                  <p className="text-sm text-gray-500">@{withdrawal.requestedBy.username}</p>
+                  <h4 className="text-sm font-medium text-gray-600 mb-1">Created By</h4>
+                  <p className="text-base font-semibold text-gray-900">{createdByName}</p>
+                  <p className="text-sm text-gray-500">@{withdrawal.createdBy.username}</p>
+                  {withdrawal.createdBy.position && (
+                    <p className="text-xs text-gray-500 mt-1">{withdrawal.createdBy.position}</p>
+                  )}
+                  {withdrawal.createdBy.department && (
+                    <p className="text-xs text-gray-500">{withdrawal.createdBy.department}</p>
+                  )}
                 </div>
-                
-                {approvedByName && (
-                  <>
-                    <Separator />
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-600 mb-1">Approved By</h4>
-                      <p className="text-base font-semibold text-gray-900">{approvedByName}</p>
-                      <p className="text-sm text-gray-500">@{withdrawal.approvedBy?.username}</p>
-                    </div>
-                  </>
-                )}
               </div>
             </div>
 
@@ -363,34 +352,34 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
         </div>
       </div>
 
-      {/* Approve Dialog */}
-      <Dialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
+      {/* Cancel Dialog */}
+      <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Approve Withdrawal</DialogTitle>
+            <DialogTitle>Cancel Withdrawal</DialogTitle>
             <DialogDescription>
-              Are you sure you want to approve withdrawal {withdrawal.withdrawalNumber}? 
-              This will complete the withdrawal and update inventory levels.
+              Are you sure you want to cancel withdrawal {withdrawal.withdrawalNumber}? 
+              This will reverse the inventory changes and mark the withdrawal as cancelled.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setIsApproveDialogOpen(false)}
+              onClick={() => setIsCancelDialogOpen(false)}
               disabled={isPending}
             >
-              Cancel
+              No, Keep Active
             </Button>
-            <Button onClick={handleApproveWithdrawal} disabled={isPending}>
+            <Button variant="destructive" onClick={handleCancelWithdrawal} disabled={isPending}>
               {isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Approving...
+                  Cancelling...
                 </>
               ) : (
                 <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Approve Withdrawal
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Yes, Cancel Withdrawal
                 </>
               )}
             </Button>
@@ -404,8 +393,8 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
           <DialogHeader>
             <DialogTitle>Delete Withdrawal</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete withdrawal {withdrawal.withdrawalNumber}? 
-              This action cannot be undone.
+              Are you sure you want to permanently delete withdrawal {withdrawal.withdrawalNumber}? 
+              This action cannot be undone and will remove all withdrawal records.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -425,7 +414,7 @@ export function WithdrawalDetailView({ initialWithdrawal }: WithdrawalDetailView
               ) : (
                 <>
                   <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Withdrawal
+                  Delete Permanently
                 </>
               )}
             </Button>

@@ -10,7 +10,7 @@ export interface ReportsData {
     lowStockItems: number
     outOfStockItems: number
   }
-  purchaseSummary: {
+  itemEntrySummary: {
     monthlyCount: number
     monthlyValue: number
     totalCount: number
@@ -37,7 +37,6 @@ export interface ReportsFilters {
 }
 
 export async function getReportsData(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   filters: ReportsFilters = {}
 ): Promise<{
   success: boolean
@@ -53,24 +52,34 @@ export async function getReportsData(
     const currentDate = new Date()
     const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
 
+    // Apply warehouse filter if provided
+    const warehouseFilter = filters.warehouseId ? { warehouseId: filters.warehouseId } : {}
+
     // Get inventory summary
     const [
       totalInventoryItems,
       inventoryValue,
       outOfStockItems
     ] = await Promise.all([
-      prisma.currentInventory.count(),
+      prisma.currentInventory.count({
+        where: warehouseFilter
+      }),
       prisma.currentInventory.aggregate({
+        where: warehouseFilter,
         _sum: { totalValue: true }
       }),
       prisma.currentInventory.count({
-        where: { quantity: 0 }
+        where: { 
+          ...warehouseFilter,
+          quantity: 0 
+        }
       })
     ])
 
     // Get low stock items
     const inventoryWithReorderLevels = await prisma.currentInventory.findMany({
       where: {
+        ...warehouseFilter,
         item: {
           reorderLevel: { not: null }
         }
@@ -90,46 +99,62 @@ export async function getReportsData(
       inventory.quantity.lte(inventory.item.reorderLevel)
     ).length
 
-    // Get purchase summary
+    // Get item entry summary (replaces purchase summary)
     const [
-      totalPurchases,
-      purchaseValue,
-      monthlyPurchases,
-      monthlyPurchaseValue
+      totalItemEntries,
+      itemEntryValue,
+      monthlyItemEntries,
+      monthlyItemEntryValue
     ] = await Promise.all([
-      prisma.purchase.count(),
-      prisma.purchase.aggregate({
-        _sum: { totalCost: true }
+      prisma.itemEntry.count({
+        where: warehouseFilter
       }),
-      prisma.purchase.count({
+      prisma.itemEntry.aggregate({
+        where: warehouseFilter,
+        _sum: { totalValue: true }
+      }),
+      prisma.itemEntry.count({
         where: {
+          ...warehouseFilter,
           createdAt: { gte: firstDayOfMonth }
         }
       }),
-      prisma.purchase.aggregate({
+      prisma.itemEntry.aggregate({
         where: {
+          ...warehouseFilter,
           createdAt: { gte: firstDayOfMonth }
         },
-        _sum: { totalCost: true }
+        _sum: { totalValue: true }
       })
     ])
 
-    // Get transfer summary
+    // Get transfer summary (note: no PENDING status anymore)
+    const transferWhereClause = filters.warehouseId 
+      ? {
+          OR: [
+            { fromWarehouseId: filters.warehouseId },
+            { toWarehouseId: filters.warehouseId }
+          ]
+        }
+      : {}
+
     const [
       totalTransfers,
       activeTransfers,
       monthlyTransfers
     ] = await Promise.all([
-      prisma.transfer.count(),
+      prisma.transfer.count({
+        where: transferWhereClause
+      }),
       prisma.transfer.count({
         where: {
-          status: {
-            in: ['PENDING', 'IN_TRANSIT']
-          }
+          ...transferWhereClause,
+          status: 'IN_TRANSIT'
         }
       }),
       prisma.transfer.count({
         where: {
+          ...transferWhereClause,
           createdAt: { gte: firstDayOfMonth }
         }
       })
@@ -142,21 +167,38 @@ export async function getReportsData(
       monthlyWithdrawals,
       monthlyWithdrawalValue
     ] = await Promise.all([
-      prisma.withdrawal.count(),
+      prisma.withdrawal.count({
+        where: warehouseFilter
+      }),
       prisma.withdrawalItem.aggregate({
+        where: filters.warehouseId 
+          ? {
+              withdrawal: {
+                warehouseId: filters.warehouseId
+              }
+            }
+          : undefined,
         _sum: { totalValue: true }
       }),
       prisma.withdrawal.count({
         where: {
+          ...warehouseFilter,
           createdAt: { gte: firstDayOfMonth }
         }
       }),
       prisma.withdrawalItem.aggregate({
-        where: {
-          withdrawal: {
-            createdAt: { gte: firstDayOfMonth }
-          }
-        },
+        where: filters.warehouseId
+          ? {
+              withdrawal: {
+                warehouseId: filters.warehouseId,
+                createdAt: { gte: firstDayOfMonth }
+              }
+            }
+          : {
+              withdrawal: {
+                createdAt: { gte: firstDayOfMonth }
+              }
+            },
         _sum: { totalValue: true }
       })
     ])
@@ -168,11 +210,11 @@ export async function getReportsData(
         lowStockItems,
         outOfStockItems
       },
-      purchaseSummary: {
-        monthlyCount: monthlyPurchases,
-        monthlyValue: Number(monthlyPurchaseValue._sum.totalCost || 0),
-        totalCount: totalPurchases,
-        totalValue: Number(purchaseValue._sum.totalCost || 0)
+      itemEntrySummary: {
+        monthlyCount: monthlyItemEntries,
+        monthlyValue: Number(monthlyItemEntryValue._sum.totalValue || 0),
+        totalCount: totalItemEntries,
+        totalValue: Number(itemEntryValue._sum.totalValue || 0)
       },
       transferSummary: {
         activeTransfers,

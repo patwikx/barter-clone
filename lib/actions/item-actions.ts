@@ -22,7 +22,7 @@ export interface ItemWithDetails {
     name: string
   }
   _count: {
-    purchaseItems: number
+    itemEntries: number
     currentInventory: number
     inventoryMovements: number
   }
@@ -58,7 +58,7 @@ export interface ItemFilters {
   costingMethod: string
 }
 
-// Include type for item queries
+// Include type for item queries - updated to use itemEntries
 const itemInclude = {
   supplier: {
     select: {
@@ -68,7 +68,7 @@ const itemInclude = {
   },
   _count: {
     select: {
-      purchaseItems: true,
+      itemEntries: true,
       currentInventory: true,
       inventoryMovements: true
     }
@@ -423,6 +423,16 @@ export async function deleteItem(itemId: string): Promise<{
       return { success: false, error: "Cannot delete item with transaction history" }
     }
 
+    // Check if item has any item entries
+    const hasItemEntries = await prisma.itemEntry.findFirst({
+      where: { itemId },
+      select: { id: true }
+    })
+
+    if (hasItemEntries) {
+      return { success: false, error: "Cannot delete item with existing item entries" }
+    }
+
     await prisma.item.delete({
       where: { id: itemId }
     })
@@ -436,6 +446,107 @@ export async function deleteItem(itemId: string): Promise<{
     return {
       success: false,
       error: 'Failed to delete item'
+    }
+  }
+}
+
+// Get item inventory summary
+export async function getItemInventorySummary(itemId: string): Promise<{
+  success: boolean
+  data?: {
+    totalQuantity: number
+    totalValue: number
+    warehouseBreakdown: Array<{
+      warehouseId: string
+      warehouseName: string
+      quantity: number
+      value: number
+      avgUnitCost: number
+    }>
+    recentEntries: Array<{
+      id: string
+      quantity: number
+      landedCost: number
+      totalValue: number
+      entryDate: Date
+      purchaseReference: string | null
+      supplier: string
+      warehouse: string
+    }>
+  }
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // Get current inventory for all warehouses
+    const inventoryData = await prisma.currentInventory.findMany({
+      where: { itemId },
+      include: {
+        warehouse: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    })
+
+    const totalQuantity = inventoryData.reduce((sum, inv) => sum + Number(inv.quantity), 0)
+    const totalValue = inventoryData.reduce((sum, inv) => sum + Number(inv.totalValue), 0)
+
+    const warehouseBreakdown = inventoryData.map(inv => ({
+      warehouseId: inv.warehouse.id,
+      warehouseName: inv.warehouse.name,
+      quantity: Number(inv.quantity),
+      value: Number(inv.totalValue),
+      avgUnitCost: Number(inv.avgUnitCost)
+    }))
+
+    // Get recent item entries
+    const recentEntries = await prisma.itemEntry.findMany({
+      where: { itemId },
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        supplier: {
+          select: { name: true }
+        },
+        warehouse: {
+          select: { name: true }
+        }
+      }
+    })
+
+    const formattedEntries = recentEntries.map(entry => ({
+      id: entry.id,
+      quantity: Number(entry.quantity),
+      landedCost: Number(entry.landedCost),
+      totalValue: Number(entry.totalValue),
+      entryDate: entry.entryDate,
+      purchaseReference: entry.purchaseReference,
+      supplier: entry.supplier.name,
+      warehouse: entry.warehouse.name
+    }))
+
+    return {
+      success: true,
+      data: {
+        totalQuantity,
+        totalValue,
+        warehouseBreakdown,
+        recentEntries: formattedEntries
+      }
+    }
+
+  } catch (error) {
+    console.error('Error fetching item inventory summary:', error)
+    return {
+      success: false,
+      error: 'Failed to fetch item inventory summary'
     }
   }
 }

@@ -1,831 +1,571 @@
-import { PrismaClient, UserRole, Permission, PurchaseStatus, TransferStatus, WithdrawalStatus, MovementType, CostingMethodType, CostLayerType, AdjustmentType, AuditAction, Prisma } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import { PrismaClient, Permission } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 async function main() {
-  console.log('Starting database seed...');
+  console.log('🌱 Starting seed process...')
 
-  // Clear existing data in correct order (respecting foreign key constraints)
-  await prisma.auditLog.deleteMany();
-  await prisma.costVariance.deleteMany();
-  await prisma.inventoryAdjustmentItem.deleteMany();
-  await prisma.inventoryAdjustment.deleteMany();
-  await prisma.costAllocation.deleteMany();
-  await prisma.costLayer.deleteMany();
-  await prisma.currentInventory.deleteMany();
-  await prisma.monthlyWeightedAverage.deleteMany();
-  await prisma.costingMethod.deleteMany();
-  await prisma.withdrawalItem.deleteMany();
-  await prisma.withdrawal.deleteMany();
-  await prisma.transferItem.deleteMany();
-  await prisma.transfer.deleteMany();
-  await prisma.inventoryMovement.deleteMany();
-  await prisma.purchaseItem.deleteMany();
-  await prisma.purchase.deleteMany();
-  await prisma.item.deleteMany();
-  await prisma.supplier.deleteMany();
-  await prisma.warehouse.deleteMany();
-  await prisma.userPermission.deleteMany();
-  await prisma.session.deleteMany();
-  await prisma.account.deleteMany();
-  await prisma.user.deleteMany();
+  // Create Warehouses first
+  console.log('📦 Creating warehouses...')
+  const warehouses = await Promise.all([
+    prisma.warehouse.create({
+      data: {
+        name: 'Manila Main Warehouse',
+        location: 'Quezon City, Metro Manila',
+        description: 'Primary distribution center for NCR',
+        isMainWarehouse: true,
+        defaultCostingMethod: 'WEIGHTED_AVERAGE'
+      }
+    }),
+    prisma.warehouse.create({
+      data: {
+        name: 'Cebu Distribution Center',
+        location: 'Lapu-Lapu City, Cebu',
+        description: 'Regional hub for Visayas operations',
+        isMainWarehouse: false,
+        defaultCostingMethod: 'WEIGHTED_AVERAGE'
+      }
+    }),
+    prisma.warehouse.create({
+      data: {
+        name: 'Davao Regional Warehouse',
+        location: 'Davao City, Davao del Sur',
+        description: 'Main distribution point for Mindanao',
+        isMainWarehouse: false,
+        defaultCostingMethod: 'FIFO'
+      }
+    }),
+    prisma.warehouse.create({
+      data: {
+        name: 'Baguio Cold Storage',
+        location: 'Baguio City, Benguet',
+        description: 'Specialized cold storage facility',
+        isMainWarehouse: false,
+        defaultCostingMethod: 'WEIGHTED_AVERAGE'
+      }
+    })
+  ])
 
-  console.log('Existing data cleared...');
+  // Create Suppliers
+  console.log('🏢 Creating suppliers...')
+  const suppliers = await Promise.all([
+    prisma.supplier.create({
+      data: {
+        name: 'Manila Trading Corp',
+        contactInfo: 'contact@manilatrading.ph | +63-2-8123-4567',
+        purchaseReference: 'MTC'
+      }
+    }),
+    prisma.supplier.create({
+      data: {
+        name: 'Cebu Pacific Supplies',
+        contactInfo: 'info@cebupacific.supplies | +63-32-456-7890',
+        purchaseReference: 'CPS'
+      }
+    }),
+    prisma.supplier.create({
+      data: {
+        name: 'Davao Agricultural Products',
+        contactInfo: 'sales@davaoagri.ph | +63-82-234-5678',
+        purchaseReference: 'DAP'
+      }
+    }),
+    prisma.supplier.create({
+      data: {
+        name: 'SM Business Solutions',
+        contactInfo: 'procurement@smbusiness.ph | +63-2-8789-0123',
+        purchaseReference: 'SMBS'
+      }
+    }),
+    prisma.supplier.create({
+      data: {
+        name: 'Robinsons Industrial Supply',
+        contactInfo: 'orders@robinsons-industrial.ph | +63-2-8456-7890',
+        purchaseReference: 'RIS'
+      }
+    })
+  ])
 
-  // Create Users with different roles
-  const hashedPassword = await bcrypt.hash('password123', 10);
-
-  const superAdmin = await prisma.user.create({
+  // Create Admin User
+  console.log('👤 Creating admin user...')
+  const adminPasswordHash = await bcrypt.hash('asdasd123', 10)
+  
+  const adminUser = await prisma.user.create({
     data: {
-      email: 'superadmin@company.com',
-      username: 'superadmin',
-      passwordHash: hashedPassword,
-      firstName: 'Super',
-      lastName: 'Admin',
+      username: 'admin',
+      email: 'admin@inventory.ph',
+      passwordHash: adminPasswordHash,
+      firstName: 'System',
+      lastName: 'Administrator',
       employeeId: 'EMP001',
       department: 'IT',
       position: 'System Administrator',
-      phone: '+1234567890',
-      role: UserRole.SUPER_ADMIN,
+      phone: '+63-2-8123-4567',
+      role: 'SUPER_ADMIN',
+      defaultWarehouseId: warehouses[0].id,
       isActive: true,
-    },
-  });
-
-  const admin = await prisma.user.create({
-    data: {
-      email: 'admin@company.com',
-      username: 'admin',
-      passwordHash: hashedPassword,
-      firstName: 'John',
-      lastName: 'Admin',
-      employeeId: 'EMP002',
-      department: 'Management',
-      position: 'Administrator',
-      phone: '+1234567891',
-      role: UserRole.ADMIN,
-      isActive: true,
-    },
-  });
-
-  const warehouseManager = await prisma.user.create({
-    data: {
-      email: 'warehouse.manager@company.com',
-      username: 'warehouse_manager',
-      passwordHash: hashedPassword,
-      firstName: 'Sarah',
-      lastName: 'Johnson',
-      employeeId: 'EMP003',
-      department: 'Warehouse',
-      position: 'Warehouse Manager',
-      phone: '+1234567892',
-      role: UserRole.WAREHOUSE_MANAGER,
-      isActive: true,
-    },
-  });
-
-  const inventoryClerk = await prisma.user.create({
-    data: {
-      email: 'inventory.clerk@company.com',
-      username: 'inventory_clerk',
-      passwordHash: hashedPassword,
-      firstName: 'Mike',
-      lastName: 'Smith',
-      employeeId: 'EMP004',
-      department: 'Warehouse',
-      position: 'Inventory Clerk',
-      phone: '+1234567893',
-      role: UserRole.INVENTORY_CLERK,
-      isActive: true,
-    },
-  });
-
-  const purchaser = await prisma.user.create({
-    data: {
-      email: 'purchaser@company.com',
-      username: 'purchaser',
-      passwordHash: hashedPassword,
-      firstName: 'Anna',
-      lastName: 'Williams',
-      employeeId: 'EMP005',
-      department: 'Procurement',
-      position: 'Purchasing Agent',
-      phone: '+1234567894',
-      role: UserRole.PURCHASER,
-      isActive: true,
-    },
-  });
-
-  const approver = await prisma.user.create({
-    data: {
-      email: 'approver@company.com',
-      username: 'approver',
-      passwordHash: hashedPassword,
-      firstName: 'Robert',
-      lastName: 'Brown',
-      employeeId: 'EMP006',
-      department: 'Management',
-      position: 'Operations Manager',
-      phone: '+1234567895',
-      role: UserRole.APPROVER,
-      isActive: true,
-    },
-  });
-
-  const regularUser = await prisma.user.create({
-    data: {
-      email: 'user@company.com',
-      username: 'regular_user',
-      passwordHash: hashedPassword,
-      firstName: 'Jane',
-      lastName: 'Doe',
-      employeeId: 'EMP007',
-      department: 'Operations',
-      position: 'Staff',
-      phone: '+1234567896',
-      role: UserRole.USER,
-      isActive: true,
-    },
-  });
-
-  console.log('Users created...');
-
-  // Create User Permissions
-  const adminPermissions: Permission[] = [
-    Permission.CREATE_ITEMS,
-    Permission.UPDATE_ITEMS,
-    Permission.DELETE_ITEMS,
-    Permission.VIEW_ITEMS,
-    Permission.CREATE_PURCHASES,
-    Permission.VIEW_PURCHASES,
-    Permission.CREATE_TRANSFERS,
-    Permission.VIEW_TRANSFERS,
-    Permission.REQUEST_WITHDRAWALS,
-    Permission.VIEW_WITHDRAWALS,
-    Permission.VIEW_INVENTORY,
-    Permission.VIEW_REPORTS,
-    Permission.MANAGE_USERS,
-    Permission.MANAGE_WAREHOUSES,
-    Permission.MANAGE_SUPPLIERS,
-    Permission.VIEW_AUDIT_LOGS,
-    Permission.SYSTEM_SETTINGS,
-  ];
-
-  const warehouseManagerPermissions: Permission[] = [
-    Permission.VIEW_ITEMS,
-    Permission.UPDATE_ITEMS,
-    Permission.CREATE_TRANSFERS,
-    Permission.APPROVE_TRANSFERS,
-    Permission.VIEW_TRANSFERS,
-    Permission.REQUEST_WITHDRAWALS,
-    Permission.APPROVE_WITHDRAWALS,
-    Permission.VIEW_WITHDRAWALS,
-    Permission.ADJUST_INVENTORY,
-    Permission.VIEW_INVENTORY,
-    Permission.RECOUNT_INVENTORY,
-    Permission.VIEW_REPORTS,
-    Permission.EXPORT_REPORTS,
-  ];
-
-  const inventoryClerkPermissions: Permission[] = [
-    Permission.VIEW_ITEMS,
-    Permission.CREATE_TRANSFERS,
-    Permission.VIEW_TRANSFERS,
-    Permission.REQUEST_WITHDRAWALS,
-    Permission.VIEW_WITHDRAWALS,
-    Permission.ADJUST_INVENTORY,
-    Permission.VIEW_INVENTORY,
-    Permission.RECOUNT_INVENTORY,
-  ];
-
-  const purchaserPermissions: Permission[] = [
-    Permission.VIEW_ITEMS,
-    Permission.CREATE_PURCHASES,
-    Permission.VIEW_PURCHASES,
-    Permission.VIEW_INVENTORY,
-    Permission.VIEW_REPORTS,
-  ];
-
-  const approverPermissions: Permission[] = [
-    Permission.VIEW_ITEMS,
-    Permission.APPROVE_PURCHASES,
-    Permission.VIEW_PURCHASES,
-    Permission.APPROVE_TRANSFERS,
-    Permission.VIEW_TRANSFERS,
-    Permission.APPROVE_WITHDRAWALS,
-    Permission.VIEW_WITHDRAWALS,
-    Permission.VIEW_INVENTORY,
-    Permission.VIEW_REPORTS,
-  ];
-
-  const userPermissions: Permission[] = [
-    Permission.VIEW_ITEMS,
-    Permission.VIEW_INVENTORY,
-    Permission.REQUEST_WITHDRAWALS,
-    Permission.VIEW_WITHDRAWALS,
-  ];
-
-  // Create permissions for each user
-  const allUserPermissions = [
-    { user: admin, permissions: adminPermissions },
-    { user: warehouseManager, permissions: warehouseManagerPermissions },
-    { user: inventoryClerk, permissions: inventoryClerkPermissions },
-    { user: purchaser, permissions: purchaserPermissions },
-    { user: approver, permissions: approverPermissions },
-    { user: regularUser, permissions: userPermissions },
-  ];
-
-  for (const { user, permissions } of allUserPermissions) {
-    for (const permission of permissions) {
-      await prisma.userPermission.create({
-        data: {
-          userId: user.id,
-          permission,
-          grantedBy: superAdmin.id,
-          grantedAt: new Date(),
-        },
-      });
+      lastLoginAt: new Date()
     }
+  })
+
+  // Create additional users
+  console.log('👥 Creating additional users...')
+  const users = await Promise.all([
+    prisma.user.create({
+      data: {
+        username: 'juan.dela.cruz',
+        email: 'juan@inventory.ph',
+        passwordHash: await bcrypt.hash('password123', 10),
+        firstName: 'Juan',
+        lastName: 'Dela Cruz',
+        employeeId: 'EMP002',
+        department: 'Warehouse',
+        position: 'Warehouse Manager',
+        phone: '+63-917-123-4567',
+        role: 'WAREHOUSE_MANAGER',
+        defaultWarehouseId: warehouses[0].id
+      }
+    }),
+    prisma.user.create({
+      data: {
+        username: 'maria.santos',
+        email: 'maria@inventory.ph',
+        passwordHash: await bcrypt.hash('password123', 10),
+        firstName: 'Maria',
+        lastName: 'Santos',
+        employeeId: 'EMP003',
+        department: 'Inventory',
+        position: 'Inventory Clerk',
+        phone: '+63-918-234-5678',
+        role: 'INVENTORY_CLERK',
+        defaultWarehouseId: warehouses[1].id
+      }
+    }),
+    prisma.user.create({
+      data: {
+        username: 'jose.rizal',
+        email: 'jose@inventory.ph',
+        passwordHash: await bcrypt.hash('password123', 10),
+        firstName: 'Jose',
+        lastName: 'Rizal',
+        employeeId: 'EMP004',
+        department: 'Purchasing',
+        position: 'Purchase Officer',
+        phone: '+63-919-345-6789',
+        role: 'PURCHASER',
+        defaultWarehouseId: warehouses[2].id
+      }
+    })
+  ])
+
+  // Assign user permissions
+  console.log('🔐 Assigning user permissions...')
+  const allUsers = [adminUser, ...users]
+  
+  // Admin gets all permissions
+  const allPermissions: Permission[] = [
+    'CREATE_ITEMS', 'UPDATE_ITEMS', 'DELETE_ITEMS', 'VIEW_ITEMS',
+    'CREATE_ITEM_ENTRIES', 'VIEW_ITEM_ENTRIES',
+    'CREATE_TRANSFERS', 'VIEW_TRANSFERS', 'CANCEL_TRANSFERS',
+    'CREATE_WITHDRAWALS', 'VIEW_WITHDRAWALS', 'CANCEL_WITHDRAWALS',
+    'ADJUST_INVENTORY', 'VIEW_INVENTORY', 'RECOUNT_INVENTORY',
+    'VIEW_REPORTS', 'EXPORT_REPORTS', 'VIEW_COST_REPORTS',
+    'MANAGE_USERS', 'MANAGE_WAREHOUSES', 'MANAGE_SUPPLIERS', 'VIEW_AUDIT_LOGS', 'SYSTEM_SETTINGS'
+  ]
+
+  for (const permission of allPermissions) {
+    await prisma.userPermission.create({
+      data: {
+        userId: adminUser.id,
+        permission: permission,
+        grantedBy: 'SYSTEM'
+      }
+    })
   }
 
-  console.log('User permissions created...');
+  // Warehouse manager permissions
+  const warehouseManagerPermissions: Permission[] = [
+    'VIEW_ITEMS', 'CREATE_ITEM_ENTRIES', 'VIEW_ITEM_ENTRIES',
+    'CREATE_TRANSFERS', 'VIEW_TRANSFERS', 'CANCEL_TRANSFERS',
+    'CREATE_WITHDRAWALS', 'VIEW_WITHDRAWALS', 'CANCEL_WITHDRAWALS',
+    'ADJUST_INVENTORY', 'VIEW_INVENTORY', 'RECOUNT_INVENTORY',
+    'VIEW_REPORTS', 'EXPORT_REPORTS'
+  ]
 
-  // Create Warehouses
-  const mainWarehouse = await prisma.warehouse.create({
-    data: {
-      name: 'Main Warehouse',
-      location: '123 Industrial Ave, City, State 12345',
-      description: 'Primary warehouse facility',
-      isMainWarehouse: true,
-      defaultCostingMethod: CostingMethodType.WEIGHTED_AVERAGE,
-    },
-  });
+  for (const permission of warehouseManagerPermissions) {
+    await prisma.userPermission.create({
+      data: {
+        userId: users[0].id,
+        permission: permission,
+        grantedBy: adminUser.id
+      }
+    })
+  }
 
-  const secondaryWarehouse = await prisma.warehouse.create({
-    data: {
-      name: 'Secondary Warehouse',
-      location: '456 Storage St, City, State 12346',
-      description: 'Secondary storage facility',
-      isMainWarehouse: false,
-      defaultCostingMethod: CostingMethodType.FIFO,
-    },
-  });
-
-  const distributionCenter = await prisma.warehouse.create({
-    data: {
-      name: 'Distribution Center',
-      location: '789 Distribution Blvd, City, State 12347',
-      description: 'Distribution and shipping center',
-      isMainWarehouse: false,
-      defaultCostingMethod: CostingMethodType.WEIGHTED_AVERAGE,
-    },
-  });
-
-  console.log('Warehouses created...');
-
-  // Create Suppliers
-  const supplier1 = await prisma.supplier.create({
-    data: {
-      name: 'ABC Manufacturing Co.',
-      contactInfo: 'contact@abcmfg.com | +1-555-0101',
-      purchaseReference: 'ABC-REF-001',
-    },
-  });
-
-  const supplier2 = await prisma.supplier.create({
-    data: {
-      name: 'XYZ Electronics Ltd.',
-      contactInfo: 'sales@xyzelec.com | +1-555-0102',
-      purchaseReference: 'XYZ-REF-002',
-    },
-  });
-
-  const supplier3 = await prisma.supplier.create({
-    data: {
-      name: 'Global Parts Supply',
-      contactInfo: 'orders@globalparts.com | +1-555-0103',
-      purchaseReference: 'GPS-REF-003',
-    },
-  });
-
-  console.log('Suppliers created...');
+  // Create user-warehouse assignments
+  console.log('🏭 Creating user-warehouse assignments...')
+  await Promise.all([
+    prisma.userWarehouse.create({
+      data: {
+        userId: adminUser.id,
+        warehouseId: warehouses[0].id,
+        role: 'MANAGER'
+      }
+    }),
+    prisma.userWarehouse.create({
+      data: {
+        userId: users[0].id,
+        warehouseId: warehouses[0].id,
+        role: 'MANAGER'
+      }
+    }),
+    prisma.userWarehouse.create({
+      data: {
+        userId: users[1].id,
+        warehouseId: warehouses[1].id,
+        role: 'CLERK'
+      }
+    }),
+    prisma.userWarehouse.create({
+      data: {
+        userId: users[2].id,
+        warehouseId: warehouses[2].id,
+        role: 'SUPERVISOR'
+      }
+    })
+  ])
 
   // Create Items
+  console.log('📋 Creating items...')
   const items = await Promise.all([
+    // Office Supplies
     prisma.item.create({
       data: {
-        itemCode: 'ITEM-001',
-        description: 'Industrial Grade Steel Bolts - M8x50mm',
-        unitOfMeasure: 'pieces',
-        standardCost: 2.50,
-        costingMethod: CostingMethodType.WEIGHTED_AVERAGE,
-        reorderLevel: 100,
-        maxLevel: 1000,
-        minLevel: 50,
-        supplierId: supplier1.id,
-      },
-    }),
-    prisma.item.create({
-      data: {
-        itemCode: 'ITEM-002',
-        description: 'Electronic Circuit Board PCB-500',
-        unitOfMeasure: 'pieces',
-        standardCost: 45.75,
-        costingMethod: CostingMethodType.FIFO,
-        reorderLevel: 25,
-        maxLevel: 200,
-        minLevel: 10,
-        supplierId: supplier2.id,
-      },
-    }),
-    prisma.item.create({
-      data: {
-        itemCode: 'ITEM-003',
-        description: 'Heavy Duty Motor Oil - 5W30 (1L)',
-        unitOfMeasure: 'liters',
-        standardCost: 8.99,
-        costingMethod: CostingMethodType.WEIGHTED_AVERAGE,
+        itemCode: 'OFF-001',
+        description: 'A4 Bond Paper - 70gsm',
+        unitOfMeasure: 'REAM',
+        standardCost: 250.00,
+        costingMethod: 'WEIGHTED_AVERAGE',
         reorderLevel: 50,
         maxLevel: 500,
-        minLevel: 20,
-        supplierId: supplier3.id,
-      },
+        minLevel: 25,
+        supplierId: suppliers[3].id
+      }
     }),
     prisma.item.create({
       data: {
-        itemCode: 'ITEM-004',
-        description: 'Precision Bearing - Type 6205',
-        unitOfMeasure: 'pieces',
-        standardCost: 15.25,
-        costingMethod: CostingMethodType.SPECIFIC_IDENTIFICATION,
+        itemCode: 'OFF-002',
+        description: 'Ballpoint Pen - Blue',
+        unitOfMeasure: 'BOX',
+        standardCost: 120.00,
+        costingMethod: 'FIFO',
+        reorderLevel: 20,
+        maxLevel: 200,
+        minLevel: 10,
+        supplierId: suppliers[3].id
+      }
+    }),
+    prisma.item.create({
+      data: {
+        itemCode: 'OFF-003',
+        description: 'Manila Folder - Legal Size',
+        unitOfMeasure: 'PACK',
+        standardCost: 85.00,
+        costingMethod: 'WEIGHTED_AVERAGE',
         reorderLevel: 30,
         maxLevel: 300,
         minLevel: 15,
-        supplierId: supplier1.id,
-      },
+        supplierId: suppliers[4].id
+      }
+    }),
+
+    // Electronics
+    prisma.item.create({
+      data: {
+        itemCode: 'ELE-001',
+        description: 'USB Flash Drive - 32GB',
+        unitOfMeasure: 'PIECE',
+        standardCost: 450.00,
+        costingMethod: 'SPECIFIC_IDENTIFICATION',
+        reorderLevel: 25,
+        maxLevel: 100,
+        minLevel: 5,
+        supplierId: suppliers[4].id
+      }
     }),
     prisma.item.create({
       data: {
-        itemCode: 'ITEM-005',
-        description: 'LED Display Module - 7-Segment',
-        unitOfMeasure: 'pieces',
-        standardCost: 12.50,
-        costingMethod: CostingMethodType.FIFO,
+        itemCode: 'ELE-002',
+        description: 'Ethernet Cable - Cat6 (10m)',
+        unitOfMeasure: 'PIECE',
+        standardCost: 180.00,
+        costingMethod: 'WEIGHTED_AVERAGE',
         reorderLevel: 40,
-        maxLevel: 400,
-        minLevel: 20,
-        supplierId: supplier2.id,
-      },
+        maxLevel: 200,
+        minLevel: 10,
+        supplierId: suppliers[1].id
+      }
     }),
-  ]);
 
-  console.log('Items created...');
-
-  // Create Purchases
-  const purchase1 = await prisma.purchase.create({
-    data: {
-      purchaseOrder: 'PO-2024-001',
-      purchaseDate: new Date('2024-01-15'),
-      totalCost: 1875.00,
-      status: PurchaseStatus.RECEIVED,
-      supplierId: supplier1.id,
-      createdById: purchaser.id,
-      approvedById: approver.id,
-      approvedAt: new Date('2024-01-16'),
-      purchaseItems: {
-        create: [
-          {
-            itemId: items[0].id, // Steel Bolts
-            quantity: 500,
-            unitCost: 2.50,
-            totalCost: 1250.00,
-          },
-          {
-            itemId: items[3].id, // Precision Bearing
-            quantity: 41,
-            unitCost: 15.25,
-            totalCost: 625.25,
-          },
-        ],
-      },
-    },
-  });
-
-  const purchase2 = await prisma.purchase.create({
-    data: {
-      purchaseOrder: 'PO-2024-002',
-      purchaseDate: new Date('2024-01-20'),
-      totalCost: 2287.50,
-      status: PurchaseStatus.RECEIVED,
-      supplierId: supplier2.id,
-      createdById: purchaser.id,
-      approvedById: approver.id,
-      approvedAt: new Date('2024-01-21'),
-      purchaseItems: {
-        create: [
-          {
-            itemId: items[1].id, // Circuit Board
-            quantity: 50,
-            unitCost: 45.75,
-            totalCost: 2287.50,
-          },
-        ],
-      },
-    },
-  });
-
-  const purchase3 = await prisma.purchase.create({
-    data: {
-      purchaseOrder: 'PO-2024-003',
-      purchaseDate: new Date('2024-01-25'),
-      totalCost: 1348.00,
-      status: PurchaseStatus.RECEIVED,
-      supplierId: supplier3.id,
-      createdById: purchaser.id,
-      approvedById: approver.id,
-      approvedAt: new Date('2024-01-26'),
-      purchaseItems: {
-        create: [
-          {
-            itemId: items[2].id, // Motor Oil
-            quantity: 150,
-            unitCost: 8.99,
-            totalCost: 1348.50,
-          },
-        ],
-      },
-    },
-  });
-
-  console.log('Purchases created...');
-
-  // Create Initial Inventory Movements (Purchase Receipts)
-  const inventoryMovements = [];
-
-  // Steel Bolts - Purchase Receipt
-  inventoryMovements.push(
-    await prisma.inventoryMovement.create({
+    // Food Items (for cold storage)
+    prisma.item.create({
       data: {
-        movementType: MovementType.PURCHASE_RECEIPT,
-        quantity: 500,
-        unitCost: 2.50,
-        totalValue: 1250.00,
-        referenceId: purchase1.id,
-        notes: 'Initial purchase receipt',
-        itemId: items[0].id,
-        warehouseId: mainWarehouse.id,
-        balanceQuantity: 500,
-        balanceValue: 1250.00,
-        costMethod: CostingMethodType.WEIGHTED_AVERAGE,
-      },
-    })
-  );
-
-  // Precision Bearing - Purchase Receipt
-  inventoryMovements.push(
-    await prisma.inventoryMovement.create({
+        itemCode: 'FOD-001',
+        description: 'Frozen Chicken Wings - 1kg',
+        unitOfMeasure: 'KG',
+        standardCost: 320.00,
+        costingMethod: 'FIFO',
+        reorderLevel: 100,
+        maxLevel: 1000,
+        minLevel: 50,
+        supplierId: suppliers[2].id
+      }
+    }),
+    prisma.item.create({
       data: {
-        movementType: MovementType.PURCHASE_RECEIPT,
-        quantity: 41,
-        unitCost: 15.25,
-        totalValue: 625.25,
-        referenceId: purchase1.id,
-        notes: 'Initial purchase receipt',
-        itemId: items[3].id,
-        warehouseId: mainWarehouse.id,
-        balanceQuantity: 41,
-        balanceValue: 625.25,
-        costMethod: CostingMethodType.SPECIFIC_IDENTIFICATION,
-      },
-    })
-  );
+        itemCode: 'FOD-002',
+        description: 'Fresh Bangus - Whole',
+        unitOfMeasure: 'KG',
+        standardCost: 280.00,
+        costingMethod: 'FIFO',
+        reorderLevel: 75,
+        maxLevel: 500,
+        minLevel: 25,
+        supplierId: suppliers[2].id
+      }
+    }),
 
-  // Circuit Board - Purchase Receipt
-  inventoryMovements.push(
-    await prisma.inventoryMovement.create({
+    // Construction Materials
+    prisma.item.create({
       data: {
-        movementType: MovementType.PURCHASE_RECEIPT,
-        quantity: 50,
-        unitCost: 45.75,
-        totalValue: 2287.50,
-        referenceId: purchase2.id,
-        notes: 'Initial purchase receipt',
-        itemId: items[1].id,
-        warehouseId: mainWarehouse.id,
-        balanceQuantity: 50,
-        balanceValue: 2287.50,
-        costMethod: CostingMethodType.FIFO,
-      },
-    })
-  );
-
-  // Motor Oil - Purchase Receipt
-  inventoryMovements.push(
-    await prisma.inventoryMovement.create({
+        itemCode: 'CON-001',
+        description: 'Portland Cement - 40kg bag',
+        unitOfMeasure: 'BAG',
+        standardCost: 245.00,
+        costingMethod: 'WEIGHTED_AVERAGE',
+        reorderLevel: 200,
+        maxLevel: 2000,
+        minLevel: 100,
+        supplierId: suppliers[0].id
+      }
+    }),
+    prisma.item.create({
       data: {
-        movementType: MovementType.PURCHASE_RECEIPT,
-        quantity: 150,
-        unitCost: 8.99,
-        totalValue: 1348.50,
-        referenceId: purchase3.id,
-        notes: 'Initial purchase receipt',
-        itemId: items[2].id,
-        warehouseId: mainWarehouse.id,
-        balanceQuantity: 150,
-        balanceValue: 1348.50,
-        costMethod: CostingMethodType.WEIGHTED_AVERAGE,
-      },
+        itemCode: 'CON-002',
+        description: 'Steel Rebar - 12mm x 6m',
+        unitOfMeasure: 'PIECE',
+        standardCost: 185.00,
+        costingMethod: 'WEIGHTED_AVERAGE',
+        reorderLevel: 150,
+        maxLevel: 1000,
+        minLevel: 50,
+        supplierId: suppliers[0].id
+      }
+    }),
+
+    // Cleaning Supplies
+    prisma.item.create({
+      data: {
+        itemCode: 'CLN-001',
+        description: 'Dishwashing Liquid - 1L',
+        unitOfMeasure: 'BOTTLE',
+        standardCost: 65.00,
+        costingMethod: 'WEIGHTED_AVERAGE',
+        reorderLevel: 100,
+        maxLevel: 500,
+        minLevel: 25,
+        supplierId: suppliers[1].id
+      }
     })
-  );
+  ])
 
-  console.log('Inventory movements created...');
+  // Create Initial Item Entries (Purchases)
+  console.log('📦 Creating initial item entries...')
+  const currentDate = new Date()
+  const thirtyDaysAgo = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const fifteenDaysAgo = new Date(currentDate.getTime() - 15 * 24 * 60 * 60 * 1000)
 
-  // Create Current Inventory records
-  await prisma.currentInventory.createMany({
-    data: [
-      {
-        itemId: items[0].id,
-        warehouseId: mainWarehouse.id,
-        quantity: 500,
-        totalValue: 1250.00,
-        avgUnitCost: 2.50,
-      },
-      {
-        itemId: items[1].id,
-        warehouseId: mainWarehouse.id,
-        quantity: 50,
-        totalValue: 2287.50,
-        avgUnitCost: 45.75,
-      },
-      {
-        itemId: items[2].id,
-        warehouseId: mainWarehouse.id,
-        quantity: 150,
-        totalValue: 1348.50,
-        avgUnitCost: 8.99,
-      },
-      {
-        itemId: items[3].id,
-        warehouseId: mainWarehouse.id,
-        quantity: 41,
-        totalValue: 625.25,
-        avgUnitCost: 15.25,
-      },
-    ],
-  });
-
-  console.log('Current inventory created...');
-
-  // Create Cost Layers for FIFO/LIFO tracking
-  const costLayers = [
+  const itemEntries = [
+    // Manila warehouse entries
     {
-      itemId: items[0].id,
-      warehouseId: mainWarehouse.id,
-      quantity: 500,
-      remainingQty: 500,
-      unitCost: 2.50,
-      totalCost: 1250.00,
-      layerDate: new Date('2024-01-16'),
-      layerType: CostLayerType.PURCHASE,
-      sourceRef: purchase1.id,
+      itemId: items[0].id, warehouseId: warehouses[0].id, supplierId: suppliers[3].id,
+      quantity: 200, landedCost: 245.00, purchaseReference: 'PO-2024-001',
+      createdById: users[2].id, entryDate: thirtyDaysAgo
     },
     {
-      itemId: items[1].id,
-      warehouseId: mainWarehouse.id,
-      quantity: 50,
-      remainingQty: 50,
-      unitCost: 45.75,
-      totalCost: 2287.50,
-      layerDate: new Date('2024-01-21'),
-      layerType: CostLayerType.PURCHASE,
-      sourceRef: purchase2.id,
+      itemId: items[1].id, warehouseId: warehouses[0].id, supplierId: suppliers[3].id,
+      quantity: 50, landedCost: 118.00, purchaseReference: 'PO-2024-002',
+      createdById: users[2].id, entryDate: thirtyDaysAgo
     },
     {
-      itemId: items[2].id,
-      warehouseId: mainWarehouse.id,
-      quantity: 150,
-      remainingQty: 150,
-      unitCost: 8.99,
-      totalCost: 1348.50,
-      layerDate: new Date('2024-01-26'),
-      layerType: CostLayerType.PURCHASE,
-      sourceRef: purchase3.id,
+      itemId: items[3].id, warehouseId: warehouses[0].id, supplierId: suppliers[4].id,
+      quantity: 75, landedCost: 435.00, purchaseReference: 'PO-2024-003',
+      createdById: users[2].id, entryDate: fifteenDaysAgo
+    },
+
+    // Cebu warehouse entries
+    {
+      itemId: items[4].id, warehouseId: warehouses[1].id, supplierId: suppliers[1].id,
+      quantity: 120, landedCost: 175.00, purchaseReference: 'PO-2024-004',
+      createdById: users[1].id, entryDate: thirtyDaysAgo
     },
     {
-      itemId: items[3].id,
-      warehouseId: mainWarehouse.id,
-      quantity: 41,
-      remainingQty: 41,
-      unitCost: 15.25,
-      totalCost: 625.25,
-      layerDate: new Date('2024-01-16'),
-      layerType: CostLayerType.PURCHASE,
-      sourceRef: purchase1.id,
+      itemId: items[9].id, warehouseId: warehouses[1].id, supplierId: suppliers[1].id,
+      quantity: 200, landedCost: 62.50, purchaseReference: 'PO-2024-005',
+      createdById: users[1].id, entryDate: fifteenDaysAgo
     },
-  ];
 
-  await prisma.costLayer.createMany({ data: costLayers });
+    // Davao warehouse entries
+    {
+      itemId: items[7].id, warehouseId: warehouses[2].id, supplierId: suppliers[0].id,
+      quantity: 500, landedCost: 240.00, purchaseReference: 'PO-2024-006',
+      createdById: adminUser.id, entryDate: thirtyDaysAgo
+    },
+    {
+      itemId: items[8].id, warehouseId: warehouses[2].id, supplierId: suppliers[0].id,
+      quantity: 300, landedCost: 182.00, purchaseReference: 'PO-2024-007',
+      createdById: adminUser.id, entryDate: fifteenDaysAgo
+    },
 
-  console.log('Cost layers created...');
+    // Baguio cold storage entries
+    {
+      itemId: items[5].id, warehouseId: warehouses[3].id, supplierId: suppliers[2].id,
+      quantity: 250, landedCost: 315.00, purchaseReference: 'PO-2024-008',
+      createdById: adminUser.id, entryDate: thirtyDaysAgo
+    },
+    {
+      itemId: items[6].id, warehouseId: warehouses[3].id, supplierId: suppliers[2].id,
+      quantity: 150, landedCost: 275.00, purchaseReference: 'PO-2024-009',
+      createdById: adminUser.id, entryDate: fifteenDaysAgo
+    }
+  ]
 
-  // Create a sample Transfer
+  for (const entry of itemEntries) {
+    await prisma.itemEntry.create({
+      data: {
+        ...entry,
+        totalValue: entry.quantity * entry.landedCost,
+        notes: `Initial stock purchase - ${entry.purchaseReference}`
+      }
+    })
+  }
+
+  // Create some transfers
+  console.log('🚚 Creating sample transfers...')
   const transfer1 = await prisma.transfer.create({
     data: {
       transferNumber: 'TRF-2024-001',
-      transferDate: new Date('2024-02-01'),
-      status: TransferStatus.COMPLETED,
-      notes: 'Transfer to secondary warehouse for distribution',
-      fromWarehouseId: mainWarehouse.id,
-      toWarehouseId: secondaryWarehouse.id,
-      createdById: inventoryClerk.id,
-      approvedById: warehouseManager.id,
-      approvedAt: new Date('2024-02-01'),
-      transferItems: {
-        create: [
-          {
-            itemId: items[0].id, // Steel Bolts
-            quantity: 100,
-          },
-          {
-            itemId: items[1].id, // Circuit Board
-            quantity: 10,
-          },
-        ],
-      },
-    },
-  });
+      fromWarehouseId: warehouses[0].id,
+      toWarehouseId: warehouses[1].id,
+      createdById: users[0].id,
+      notes: 'Regular stock replenishment',
+      transferDate: fifteenDaysAgo
+    }
+  })
 
-  console.log('Transfer created...');
+  await prisma.transferItem.create({
+    data: {
+      transferId: transfer1.id,
+      itemId: items[0].id,
+      quantity: 25
+    }
+  })
 
-  // Create a sample Withdrawal
+  // Create some withdrawals
+  console.log('📤 Creating sample withdrawals...')
   const withdrawal1 = await prisma.withdrawal.create({
     data: {
-      withdrawalNumber: 'WTH-2024-001',
-      withdrawalDate: new Date('2024-02-05'),
-      purpose: 'Production line assembly',
-      status: WithdrawalStatus.COMPLETED,
-      warehouseId: mainWarehouse.id,
-      requestedById: regularUser.id,
-      approvedById: warehouseManager.id,
-      approvedAt: new Date('2024-02-05'),
-      withdrawalItems: {
-        create: [
-          {
-            itemId: items[0].id, // Steel Bolts
-            quantity: 50,
-            unitCost: 2.50,
-            totalValue: 125.00,
-          },
-          {
-            itemId: items[3].id, // Precision Bearing
-            quantity: 5,
-            unitCost: 15.25,
-            totalValue: 76.25,
-          },
-        ],
-      },
-    },
-  });
+      withdrawalNumber: 'WDL-2024-001',
+      warehouseId: warehouses[0].id,
+      createdById: users[1].id,
+      purpose: 'Office consumption',
+      withdrawalDate: fifteenDaysAgo
+    }
+  })
 
-  console.log('Withdrawal created...');
-
-  // Create an Inventory Adjustment
-  const adjustment1 = await prisma.inventoryAdjustment.create({
+  await prisma.withdrawalItem.create({
     data: {
-      adjustmentNumber: 'ADJ-2024-001',
-      adjustmentType: AdjustmentType.PHYSICAL_COUNT,
-      reason: 'Monthly physical count discrepancy',
-      notes: 'Found 5 extra units during count',
-      warehouseId: mainWarehouse.id,
-      adjustedById: inventoryClerk.id,
-      adjustedAt: new Date('2024-02-10'),
-      adjustmentItems: {
-        create: [
-          {
-            itemId: items[2].id, // Motor Oil
-            systemQuantity: 150,
-            actualQuantity: 155,
-            adjustmentQuantity: 5,
-            unitCost: 8.99,
-            totalAdjustment: 44.95,
-          },
-        ],
-      },
-    },
-  });
-
-  console.log('Inventory adjustment created...');
-
-  // Create Audit Logs
-  const auditLogs: Prisma.AuditLogCreateManyInput[] = [
-    {
-      tableName: 'purchases',
-      recordId: purchase1.id,
-      action: AuditAction.CREATE,
-      oldValues: Prisma.DbNull,
-      newValues: { purchaseOrder: 'PO-2024-001', status: 'PENDING' },
-      changedFields: ['purchaseOrder', 'status'],
-      userId: purchaser.id,
-      userEmail: purchaser.email,
-      transactionType: 'PURCHASE',
-      referenceNumber: 'PO-2024-001',
-      notes: 'Purchase order created',
-      timestamp: new Date('2024-01-15T10:00:00Z'),
-    },
-    {
-      tableName: 'purchases',
-      recordId: purchase1.id,
-      action: AuditAction.APPROVE,
-      oldValues: { status: 'PENDING' },
-      newValues: { status: 'RECEIVED', approvedBy: approver.id },
-      changedFields: ['status', 'approvedBy'],
-      userId: approver.id,
-      userEmail: approver.email,
-      transactionType: 'PURCHASE',
-      referenceNumber: 'PO-2024-001',
-      notes: 'Purchase order approved and received',
-      timestamp: new Date('2024-01-16T14:30:00Z'),
-    },
-    {
-      tableName: 'transfers',
-      recordId: transfer1.id,
-      action: AuditAction.CREATE,
-      oldValues: Prisma.DbNull,
-      newValues: { transferNumber: 'TRF-2024-001', status: 'PENDING' },
-      changedFields: ['transferNumber', 'status'],
-      userId: inventoryClerk.id,
-      userEmail: inventoryClerk.email,
-      transactionType: 'TRANSFER',
-      referenceNumber: 'TRF-2024-001',
-      notes: 'Transfer created',
-      timestamp: new Date('2024-02-01T09:15:00Z'),
-    },
-    {
-      tableName: 'withdrawals',
-      recordId: withdrawal1.id,
-      action: AuditAction.CREATE,
-      oldValues: Prisma.DbNull,
-      newValues: { withdrawalNumber: 'WTH-2024-001', status: 'PENDING' },
-      changedFields: ['withdrawalNumber', 'status'],
-      userId: regularUser.id,
-      userEmail: regularUser.email,
-      transactionType: 'WITHDRAWAL',
-      referenceNumber: 'WTH-2024-001',
-      notes: 'Withdrawal request created',
-      timestamp: new Date('2024-02-05T11:20:00Z'),
-    },
-  ];
-
-  await prisma.auditLog.createMany({ data: auditLogs });
-
-  console.log('Audit logs created...');
-
-  // Create Monthly Weighted Averages
-  const monthlyAverages = [
-    {
-      itemId: items[0].id,
-      warehouseId: mainWarehouse.id,
-      year: 2024,
-      month: 1,
-      weightedAvgCost: 2.50,
-      totalQuantity: 500,
-      totalValue: 1250.00,
-      openingQuantity: 0,
-      openingValue: 0,
-      closingQuantity: 500,
-      closingValue: 1250.00,
-      purchaseQuantity: 500,
-      purchaseValue: 1250.00,
-    },
-    {
+      withdrawalId: withdrawal1.id,
       itemId: items[1].id,
-      warehouseId: mainWarehouse.id,
-      year: 2024,
-      month: 1,
-      weightedAvgCost: 45.75,
-      totalQuantity: 50,
-      totalValue: 2287.50,
-      openingQuantity: 0,
-      openingValue: 0,
-      closingQuantity: 50,
-      closingValue: 2287.50,
-      purchaseQuantity: 50,
-      purchaseValue: 2287.50,
-    },
-  ];
+      quantity: 10,
+      unitCost: 118.00,
+      totalValue: 1180.00
+    }
+  })
 
-  await prisma.monthlyWeightedAverage.createMany({ data: monthlyAverages });
+  // Create current inventory records
+  console.log('📊 Creating current inventory records...')
+  const inventoryData = [
+    { itemId: items[0].id, warehouseId: warehouses[0].id, quantity: 175, totalValue: 42875.00, avgUnitCost: 245.00 },
+    { itemId: items[0].id, warehouseId: warehouses[1].id, quantity: 25, totalValue: 6125.00, avgUnitCost: 245.00 },
+    { itemId: items[1].id, warehouseId: warehouses[0].id, quantity: 40, totalValue: 4720.00, avgUnitCost: 118.00 },
+    { itemId: items[3].id, warehouseId: warehouses[0].id, quantity: 75, totalValue: 32625.00, avgUnitCost: 435.00 },
+    { itemId: items[4].id, warehouseId: warehouses[1].id, quantity: 120, totalValue: 21000.00, avgUnitCost: 175.00 },
+    { itemId: items[5].id, warehouseId: warehouses[3].id, quantity: 250, totalValue: 78750.00, avgUnitCost: 315.00 },
+    { itemId: items[6].id, warehouseId: warehouses[3].id, quantity: 150, totalValue: 41250.00, avgUnitCost: 275.00 },
+    { itemId: items[7].id, warehouseId: warehouses[2].id, quantity: 500, totalValue: 120000.00, avgUnitCost: 240.00 },
+    { itemId: items[8].id, warehouseId: warehouses[2].id, quantity: 300, totalValue: 54600.00, avgUnitCost: 182.00 },
+    { itemId: items[9].id, warehouseId: warehouses[1].id, quantity: 200, totalValue: 12500.00, avgUnitCost: 62.50 }
+  ]
 
-  console.log('Monthly weighted averages created...');
+  for (const inv of inventoryData) {
+    await prisma.currentInventory.create({
+      data: inv
+    })
+  }
 
-  console.log('Database seeding completed successfully!');
+  // Create some notifications
+  console.log('🔔 Creating sample notifications...')
+  await Promise.all([
+    prisma.notification.create({
+      data: {
+        title: 'Low Stock Alert',
+        message: 'Ballpoint Pen - Blue (OFF-002) is running low in Manila warehouse',
+        type: 'WARNING',
+        userId: users[0].id,
+        referenceType: 'ITEM',
+        referenceId: items[1].id
+      }
+    }),
+    prisma.notification.create({
+      data: {
+        title: 'Transfer Completed',
+        message: 'Transfer TRF-2024-001 has been completed successfully',
+        type: 'SUCCESS',
+        userId: users[0].id,
+        referenceType: 'TRANSFER',
+        referenceId: transfer1.id
+      }
+    })
+  ])
+
+  console.log('✅ Seed completed successfully!')
+  console.log('\n📊 Summary:')
+  console.log(`- Created ${warehouses.length} warehouses`)
+  console.log(`- Created ${suppliers.length} suppliers`) 
+  console.log(`- Created ${allUsers.length} users`)
+  console.log(`- Created ${items.length} items`)
+  console.log(`- Created ${itemEntries.length} item entries`)
+  console.log(`- Created 1 transfer with items`)
+  console.log(`- Created 1 withdrawal with items`)
+  console.log(`- Created ${inventoryData.length} inventory records`)
+  
+  console.log('\n🔑 Login Credentials:')
+  console.log('Username: admin')
+  console.log('Password: asdasd123')
+  console.log('\nOther users:')
+  console.log('juan.dela.cruz / password123')
+  console.log('maria.santos / password123')
+  console.log('jose.rizal / password123')
 }
 
 main()
-  .catch((e) => {
-    console.error('Error during seeding:', e);
-    process.exit(1);
+  .then(async () => {
+    await prisma.$disconnect()
   })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  .catch(async (e) => {
+    console.error('❌ Seeding failed:', e)
+    await prisma.$disconnect()
+    process.exit(1)
+  })

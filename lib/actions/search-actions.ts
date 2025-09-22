@@ -5,7 +5,7 @@ import { auth } from "@/auth"
 
 export interface SearchResult {
   id: string
-  type: 'ITEM' | 'PURCHASE' | 'TRANSFER' | 'WITHDRAWAL' | 'WAREHOUSE' | 'SUPPLIER' | 'USER'
+  type: 'ITEM' | 'ITEM_ENTRY' | 'TRANSFER' | 'WITHDRAWAL' | 'WAREHOUSE' | 'SUPPLIER' | 'USER'
   title: string
   description: string
   metadata?: {
@@ -71,29 +71,32 @@ export async function performGlobalSearch(
       })))
     }
 
-    // Search Purchases
-    if (!type || type === 'PURCHASE') {
-      const purchases = await prisma.purchase.findMany({
+    // Search Item Entries (replaces Purchase search)
+    if (!type || type === 'ITEM_ENTRY') {
+      const itemEntries = await prisma.itemEntry.findMany({
         where: {
           OR: [
-            { purchaseOrder: { contains: searchTerm, mode: 'insensitive' } }
+            { purchaseReference: { contains: searchTerm, mode: 'insensitive' } },
+            { notes: { contains: searchTerm, mode: 'insensitive' } }
           ]
         },
         include: {
-          supplier: { select: { name: true } }
+          supplier: { select: { name: true } },
+          item: { select: { itemCode: true, description: true } },
+          warehouse: { select: { name: true } }
         },
         take: Math.floor(limit / 7)
       })
 
-      results.push(...purchases.map(purchase => ({
-        id: purchase.id,
-        type: 'PURCHASE' as const,
-        title: purchase.purchaseOrder,
-        description: `Purchase from ${purchase.supplier.name}`,
+      results.push(...itemEntries.map(entry => ({
+        id: entry.id,
+        type: 'ITEM_ENTRY' as const,
+        title: entry.purchaseReference || `Entry for ${entry.item.itemCode}`,
+        description: `${entry.item.description} from ${entry.supplier.name}`,
         metadata: {
-          date: purchase.purchaseDate.toLocaleDateString(),
-          status: purchase.status,
-          value: `₱${Number(purchase.totalCost).toFixed(2)}`
+          date: entry.entryDate.toLocaleDateString(),
+          value: `₱${Number(entry.totalValue).toFixed(2)}`,
+          location: entry.warehouse.name
         }
       })))
     }
@@ -136,22 +139,34 @@ export async function performGlobalSearch(
           ]
         },
         include: {
-          warehouse: { select: { name: true } }
+          warehouse: { select: { name: true } },
+          withdrawalItems: {
+            include: {
+              item: { select: { itemCode: true } }
+            }
+          }
         },
         take: Math.floor(limit / 7)
       })
 
-      results.push(...withdrawals.map(withdrawal => ({
-        id: withdrawal.id,
-        type: 'WITHDRAWAL' as const,
-        title: withdrawal.withdrawalNumber,
-        description: withdrawal.purpose || 'Material withdrawal',
-        metadata: {
-          date: withdrawal.withdrawalDate.toLocaleDateString(),
-          status: withdrawal.status,
-          location: withdrawal.warehouse.name
+      results.push(...withdrawals.map(withdrawal => {
+        const totalValue = withdrawal.withdrawalItems.reduce((sum, item) => 
+          sum + Number(item.totalValue), 0
+        )
+        
+        return {
+          id: withdrawal.id,
+          type: 'WITHDRAWAL' as const,
+          title: withdrawal.withdrawalNumber,
+          description: withdrawal.purpose || 'Material withdrawal',
+          metadata: {
+            date: withdrawal.withdrawalDate.toLocaleDateString(),
+            status: withdrawal.status,
+            location: withdrawal.warehouse.name,
+            value: `₱${totalValue.toFixed(2)}`
+          }
         }
-      })))
+      }))
     }
 
     // Search Warehouses
@@ -164,6 +179,13 @@ export async function performGlobalSearch(
             { description: { contains: searchTerm, mode: 'insensitive' } }
           ]
         },
+        include: {
+          _count: {
+            select: {
+              currentInventory: true
+            }
+          }
+        },
         take: Math.floor(limit / 7)
       })
 
@@ -173,7 +195,8 @@ export async function performGlobalSearch(
         title: warehouse.name,
         description: warehouse.description || 'Warehouse facility',
         metadata: {
-          location: warehouse.location || undefined
+          location: warehouse.location || undefined,
+          value: `${warehouse._count.currentInventory} items`
         }
       })))
     }
@@ -184,8 +207,17 @@ export async function performGlobalSearch(
         where: {
           OR: [
             { name: { contains: searchTerm, mode: 'insensitive' } },
-            { contactInfo: { contains: searchTerm, mode: 'insensitive' } }
+            { contactInfo: { contains: searchTerm, mode: 'insensitive' } },
+            { purchaseReference: { contains: searchTerm, mode: 'insensitive' } }
           ]
+        },
+        include: {
+          _count: {
+            select: {
+              items: true,
+              itemEntries: true
+            }
+          }
         },
         take: Math.floor(limit / 7)
       })
@@ -195,7 +227,9 @@ export async function performGlobalSearch(
         type: 'SUPPLIER' as const,
         title: supplier.name,
         description: supplier.contactInfo || 'Supplier',
-        metadata: {}
+        metadata: {
+          value: `${supplier._count.items} items, ${supplier._count.itemEntries} entries`
+        }
       })))
     }
 
@@ -203,12 +237,17 @@ export async function performGlobalSearch(
     if (!type || type === 'USER') {
       const users = await prisma.user.findMany({
         where: {
-          OR: [
-            { username: { contains: searchTerm, mode: 'insensitive' } },
-            { firstName: { contains: searchTerm, mode: 'insensitive' } },
-            { lastName: { contains: searchTerm, mode: 'insensitive' } },
-            { email: { contains: searchTerm, mode: 'insensitive' } },
-            { employeeId: { contains: searchTerm, mode: 'insensitive' } }
+          AND: [
+            {
+              OR: [
+                { username: { contains: searchTerm, mode: 'insensitive' } },
+                { firstName: { contains: searchTerm, mode: 'insensitive' } },
+                { lastName: { contains: searchTerm, mode: 'insensitive' } },
+                { email: { contains: searchTerm, mode: 'insensitive' } },
+                { employeeId: { contains: searchTerm, mode: 'insensitive' } }
+              ]
+            },
+            { isActive: true } // Only search active users
           ]
         },
         select: {
@@ -221,7 +260,8 @@ export async function performGlobalSearch(
           department: true,
           position: true,
           role: true,
-          isActive: true
+          isActive: true,
+          lastLoginAt: true
         },
         take: Math.floor(limit / 7)
       })
@@ -235,15 +275,31 @@ export async function performGlobalSearch(
           description: `@${user.username} - ${user.position || user.role}`,
           metadata: {
             location: user.department || undefined,
-            status: user.isActive ? 'Active' : 'Inactive'
+            status: user.isActive ? 'Active' : 'Inactive',
+            date: user.lastLoginAt?.toLocaleDateString()
           }
         }
       }))
     }
 
+    // Sort results by relevance (exact matches first, then partial matches)
+    const sortedResults = results.sort((a, b) => {
+      const aExactMatch = a.title.toLowerCase().includes(searchTerm) || 
+                         a.description.toLowerCase().includes(searchTerm)
+      const bExactMatch = b.title.toLowerCase().includes(searchTerm) || 
+                         b.description.toLowerCase().includes(searchTerm)
+      
+      if (aExactMatch && !bExactMatch) return -1
+      if (!aExactMatch && bExactMatch) return 1
+      
+      // Secondary sort by type priority
+      const typePriority = { 'ITEM': 1, 'ITEM_ENTRY': 2, 'TRANSFER': 3, 'WITHDRAWAL': 4, 'WAREHOUSE': 5, 'SUPPLIER': 6, 'USER': 7 }
+      return typePriority[a.type] - typePriority[b.type]
+    })
+
     return {
       success: true,
-      data: results.slice(0, limit)
+      data: sortedResults.slice(0, limit)
     }
 
   } catch (error) {

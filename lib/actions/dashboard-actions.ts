@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
-import { PurchaseStatus, TransferStatus, WithdrawalStatus } from "@prisma/client"
+import { TransferStatus, WithdrawalStatus } from "@prisma/client"
 
 export interface DashboardStats {
   inventory: {
@@ -12,27 +12,27 @@ export interface DashboardStats {
     outOfStockItems: number
     warehouseCount: number
   }
-  purchases: {
-    totalPurchases: number
-    pendingPurchases: number
+  itemEntries: {
+    totalEntries: number
     totalValue: number
-    thisMonthPurchases: number
+    thisMonthEntries: number
+    thisMonthValue: number
   }
   transfers: {
     totalTransfers: number
-    pendingTransfers: number
     inTransitTransfers: number
+    completedTransfers: number
     thisMonthTransfers: number
   }
   withdrawals: {
     totalWithdrawals: number
-    pendingWithdrawals: number
-    approvedWithdrawals: number
+    completedWithdrawals: number
+    cancelledWithdrawals: number
     thisMonthWithdrawals: number
   }
   recentActivity: Array<{
     id: string
-    type: 'PURCHASE' | 'TRANSFER' | 'WITHDRAWAL' | 'ADJUSTMENT'
+    type: 'ITEM_ENTRY' | 'TRANSFER' | 'WITHDRAWAL' | 'ADJUSTMENT'
     title: string
     description: string
     timestamp: Date
@@ -92,40 +92,43 @@ export async function getDashboardStats(): Promise<{
       inventory => inventory.item.reorderLevel && inventory.quantity.lte(inventory.item.reorderLevel)
     ).length
 
-    // Get purchase stats
+    // Get item entry stats (replacing purchase stats)
     const [
-      totalPurchases,
-      pendingPurchases,
-      purchaseValue,
-      thisMonthPurchases
+      totalEntries,
+      entriesValue,
+      thisMonthEntries,
+      thisMonthEntriesValue
     ] = await Promise.all([
-      prisma.purchase.count(),
-      prisma.purchase.count({
-        where: { status: PurchaseStatus.PENDING }
+      prisma.itemEntry.count(),
+      prisma.itemEntry.aggregate({
+        _sum: { totalValue: true }
       }),
-      prisma.purchase.aggregate({
-        _sum: { totalCost: true }
-      }),
-      prisma.purchase.count({
+      prisma.itemEntry.count({
         where: {
           createdAt: { gte: firstDayOfMonth }
         }
+      }),
+      prisma.itemEntry.aggregate({
+        where: {
+          createdAt: { gte: firstDayOfMonth }
+        },
+        _sum: { totalValue: true }
       })
     ])
 
-    // Get transfer stats
+    // Get transfer stats (updated for your schema)
     const [
       totalTransfers,
-      pendingTransfers,
       inTransitTransfers,
+      completedTransfers,
       thisMonthTransfers
     ] = await Promise.all([
       prisma.transfer.count(),
       prisma.transfer.count({
-        where: { status: TransferStatus.PENDING }
+        where: { status: TransferStatus.IN_TRANSIT }
       }),
       prisma.transfer.count({
-        where: { status: TransferStatus.IN_TRANSIT }
+        where: { status: TransferStatus.COMPLETED }
       }),
       prisma.transfer.count({
         where: {
@@ -134,19 +137,19 @@ export async function getDashboardStats(): Promise<{
       })
     ])
 
-    // Get withdrawal stats
+    // Get withdrawal stats (updated for your schema)
     const [
       totalWithdrawals,
-      pendingWithdrawals,
-      approvedWithdrawals,
+      completedWithdrawals,
+      cancelledWithdrawals,
       thisMonthWithdrawals
     ] = await Promise.all([
       prisma.withdrawal.count(),
       prisma.withdrawal.count({
-        where: { status: WithdrawalStatus.PENDING }
+        where: { status: WithdrawalStatus.COMPLETED }
       }),
       prisma.withdrawal.count({
-        where: { status: WithdrawalStatus.APPROVED }
+        where: { status: WithdrawalStatus.CANCELLED }
       }),
       prisma.withdrawal.count({
         where: {
@@ -155,17 +158,18 @@ export async function getDashboardStats(): Promise<{
       })
     ])
 
-    // Get recent activity
-    const [recentPurchases, recentTransfers, recentWithdrawals] = await Promise.all([
-      prisma.purchase.findMany({
+    // Get recent activity (updated for your schema)
+    const [recentItemEntries, recentTransfers, recentWithdrawals, recentAdjustments] = await Promise.all([
+      prisma.itemEntry.findMany({
         take: 5,
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
-          purchaseOrder: true,
-          status: true,
+          purchaseReference: true,
+          totalValue: true,
           createdAt: true,
-          supplier: { select: { name: true } }
+          supplier: { select: { name: true } },
+          item: { select: { description: true } }
         }
       }),
       prisma.transfer.findMany({
@@ -190,34 +194,54 @@ export async function getDashboardStats(): Promise<{
           createdAt: true,
           purpose: true
         }
+      }),
+      prisma.inventoryAdjustment.findMany({
+        take: 3,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          adjustmentNumber: true,
+          adjustmentType: true,
+          reason: true,
+          createdAt: true,
+          warehouse: { select: { name: true } }
+        }
       })
     ])
 
     // Combine and format recent activity
     const recentActivity = [
-      ...recentPurchases.map(p => ({
-        id: p.id,
-        type: 'PURCHASE' as const,
-        title: p.purchaseOrder,
-        description: `Purchase from ${p.supplier.name}`,
-        timestamp: p.createdAt,
-        status: p.status
+      ...recentItemEntries.map(entry => ({
+        id: entry.id,
+        type: 'ITEM_ENTRY' as const,
+        title: entry.purchaseReference || `Entry-${entry.id.slice(-6)}`,
+        description: `${entry.item.description} from ${entry.supplier.name}`,
+        timestamp: entry.createdAt,
+        status: 'COMPLETED'
       })),
-      ...recentTransfers.map(t => ({
-        id: t.id,
+      ...recentTransfers.map(transfer => ({
+        id: transfer.id,
         type: 'TRANSFER' as const,
-        title: t.transferNumber,
-        description: `${t.fromWarehouse.name} → ${t.toWarehouse.name}`,
-        timestamp: t.createdAt,
-        status: t.status
+        title: transfer.transferNumber,
+        description: `${transfer.fromWarehouse.name} → ${transfer.toWarehouse.name}`,
+        timestamp: transfer.createdAt,
+        status: transfer.status
       })),
-      ...recentWithdrawals.map(w => ({
-        id: w.id,
+      ...recentWithdrawals.map(withdrawal => ({
+        id: withdrawal.id,
         type: 'WITHDRAWAL' as const,
-        title: w.withdrawalNumber,
-        description: w.purpose || 'Material withdrawal',
-        timestamp: w.createdAt,
-        status: w.status
+        title: withdrawal.withdrawalNumber,
+        description: withdrawal.purpose || 'Material withdrawal',
+        timestamp: withdrawal.createdAt,
+        status: withdrawal.status
+      })),
+      ...recentAdjustments.map(adjustment => ({
+        id: adjustment.id,
+        type: 'ADJUSTMENT' as const,
+        title: adjustment.adjustmentNumber,
+        description: `${adjustment.adjustmentType} - ${adjustment.reason}`,
+        timestamp: adjustment.createdAt,
+        status: 'COMPLETED'
       }))
     ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 10)
 
@@ -229,22 +253,22 @@ export async function getDashboardStats(): Promise<{
         outOfStockItems,
         warehouseCount
       },
-      purchases: {
-        totalPurchases,
-        pendingPurchases,
-        totalValue: Number(purchaseValue._sum.totalCost || 0),
-        thisMonthPurchases
+      itemEntries: {
+        totalEntries,
+        totalValue: Number(entriesValue._sum.totalValue || 0),
+        thisMonthEntries,
+        thisMonthValue: Number(thisMonthEntriesValue._sum.totalValue || 0)
       },
       transfers: {
         totalTransfers,
-        pendingTransfers,
         inTransitTransfers,
+        completedTransfers,
         thisMonthTransfers
       },
       withdrawals: {
         totalWithdrawals,
-        pendingWithdrawals,
-        approvedWithdrawals,
+        completedWithdrawals,
+        cancelledWithdrawals,
         thisMonthWithdrawals
       },
       recentActivity

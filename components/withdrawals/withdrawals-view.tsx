@@ -9,11 +9,8 @@ import {
   RefreshCw,
   Plus,
   Eye,
-  Edit,
   CheckCircle,
-  Clock,
   XCircle,
-  AlertCircle,
   Calendar,
   MoreHorizontal,
 } from "lucide-react"
@@ -43,28 +40,20 @@ interface WithdrawalsViewProps {
 
 const getStatusIcon = (status: WithdrawalStatus) => {
   switch (status) {
-    case WithdrawalStatus.PENDING:
-      return Clock
-    case WithdrawalStatus.APPROVED:
-      return CheckCircle
     case WithdrawalStatus.COMPLETED:
       return CheckCircle
-    case WithdrawalStatus.REJECTED:
+    case WithdrawalStatus.CANCELLED:
       return XCircle
     default:
-      return Clock
+      return CheckCircle
   }
 }
 
 const getStatusColor = (status: WithdrawalStatus) => {
   switch (status) {
-    case WithdrawalStatus.PENDING:
-      return "bg-yellow-100 text-yellow-800"
-    case WithdrawalStatus.APPROVED:
-      return "bg-blue-100 text-blue-800"
     case WithdrawalStatus.COMPLETED:
       return "bg-green-100 text-green-800"
-    case WithdrawalStatus.REJECTED:
+    case WithdrawalStatus.CANCELLED:
       return "bg-red-100 text-red-800"
     default:
       return "bg-gray-100 text-gray-800"
@@ -148,7 +137,7 @@ export function WithdrawalsView({
         <div className="flex items-start justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Material Withdrawals</h1>
-            <p className="text-gray-600">Manage material withdrawal requests and approvals</p>
+            <p className="text-gray-600">Manage material withdrawal requests and issuances</p>
           </div>
           <div className="flex items-center gap-3">
             <Button asChild>
@@ -170,7 +159,7 @@ export function WithdrawalsView({
 
         {/* Stats Cards */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-blue-50 rounded-lg">
@@ -180,28 +169,6 @@ export function WithdrawalsView({
               <div className="text-2xl font-bold text-gray-900 mb-1">{formatNumber(stats.totalWithdrawals)}</div>
               <div className="text-sm font-medium text-gray-600">Total Withdrawals</div>
               <div className="text-xs text-gray-500 mt-1">All time withdrawals</div>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-yellow-50 rounded-lg">
-                  <Clock className="h-5 w-5 text-yellow-600" />
-                </div>
-              </div>
-              <div className="text-2xl font-bold text-yellow-600 mb-1">{formatNumber(stats.pendingWithdrawals)}</div>
-              <div className="text-sm font-medium text-gray-600">Pending</div>
-              <div className="text-xs text-gray-500 mt-1">Awaiting approval</div>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <CheckCircle className="h-5 w-5 text-blue-600" />
-                </div>
-              </div>
-              <div className="text-2xl font-bold text-blue-600 mb-1">{formatNumber(stats.approvedWithdrawals)}</div>
-              <div className="text-sm font-medium text-gray-600">Approved</div>
-              <div className="text-xs text-gray-500 mt-1">Ready for processing</div>
             </div>
 
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
@@ -218,12 +185,12 @@ export function WithdrawalsView({
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-red-50 rounded-lg">
-                  <AlertCircle className="h-5 w-5 text-red-600" />
+                  <XCircle className="h-5 w-5 text-red-600" />
                 </div>
               </div>
-              <div className="text-2xl font-bold text-red-600 mb-1">{formatNumber(stats.rejectedWithdrawals)}</div>
-              <div className="text-sm font-medium text-gray-600">Rejected</div>
-              <div className="text-xs text-gray-500 mt-1">Rejected requests</div>
+              <div className="text-2xl font-bold text-red-600 mb-1">{formatNumber(stats.cancelledWithdrawals)}</div>
+              <div className="text-sm font-medium text-gray-600">Cancelled</div>
+              <div className="text-xs text-gray-500 mt-1">Cancelled withdrawals</div>
             </div>
           </div>
         )}
@@ -364,22 +331,17 @@ export function WithdrawalsView({
                     <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="text-right py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
-                    <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Requested By</th>
-                    <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Approved By</th>
+                    <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Created By</th>
                     <th className="text-center py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {withdrawals.map((withdrawal) => {
                     const StatusIcon = getStatusIcon(withdrawal.status)
-                    const requestedByName = [withdrawal.requestedBy.firstName, withdrawal.requestedBy.lastName]
-                      .filter(Boolean).join(' ') || withdrawal.requestedBy.username
-                    const approvedByName = withdrawal.approvedBy 
-                      ? [withdrawal.approvedBy.firstName, withdrawal.approvedBy.lastName]
-                          .filter(Boolean).join(' ') || withdrawal.approvedBy.username
-                      : null
+                    const createdByName = [withdrawal.createdBy.firstName, withdrawal.createdBy.lastName]
+                      .filter(Boolean).join(' ') || withdrawal.createdBy.username
 
-                    const totalValue = withdrawal.withdrawalItems.reduce((sum, item) => sum + item.totalValue, 0)
+                    const totalValue = withdrawal.withdrawalItems.reduce((sum, item) => sum + Number(item.totalValue), 0)
 
                     return (
                       <tr key={withdrawal.id} className="hover:bg-gray-50 transition-colors">
@@ -437,27 +399,9 @@ export function WithdrawalsView({
                         </td>
                         <td className="py-4 px-6 whitespace-nowrap">
                           <div className="flex flex-col">
-                            <div className="text-sm font-medium text-gray-900">{requestedByName}</div>
-                            <div className="text-xs text-gray-500">@{withdrawal.requestedBy.username}</div>
+                            <div className="text-sm font-medium text-gray-900">{createdByName}</div>
+                            <div className="text-xs text-gray-500">@{withdrawal.createdBy.username}</div>
                           </div>
-                        </td>
-                        <td className="py-4 px-6 whitespace-nowrap">
-                          {approvedByName ? (
-                            <div className="flex flex-col">
-                              <div className="text-sm font-medium text-gray-900">{approvedByName}</div>
-                              <div className="text-xs text-gray-500">@{withdrawal.approvedBy?.username}</div>
-                              {withdrawal.approvedAt && (
-                                <div className="text-xs text-gray-400 mt-1">
-                                  {withdrawal.approvedAt.toLocaleDateString('en-PH', {
-                                    month: 'short',
-                                    day: 'numeric'
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-400">-</span>
-                          )}
                         </td>
                         <td className="py-4 px-6 whitespace-nowrap text-center">
                           <DropdownMenu>
@@ -474,20 +418,12 @@ export function WithdrawalsView({
                                   View Details
                                 </Link>
                               </DropdownMenuItem>
-                              {withdrawal.status === WithdrawalStatus.PENDING && (
+                              {withdrawal.status === WithdrawalStatus.COMPLETED && (
                                 <>
-                                  <DropdownMenuItem>
-                                    <Edit className="w-4 h-4 mr-2" />
-                                    Edit Withdrawal
-                                  </DropdownMenuItem>
                                   <DropdownMenuSeparator />
-                                  <DropdownMenuItem>
-                                    <CheckCircle className="w-4 h-4 mr-2" />
-                                    Approve Withdrawal
-                                  </DropdownMenuItem>
                                   <DropdownMenuItem className="text-red-600 focus:text-red-600">
                                     <XCircle className="w-4 h-4 mr-2" />
-                                    Reject Withdrawal
+                                    Cancel Withdrawal
                                   </DropdownMenuItem>
                                 </>
                               )}

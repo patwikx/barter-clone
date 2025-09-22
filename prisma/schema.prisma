@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql" // or "mysql", "sqlite", etc.
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -39,7 +39,7 @@ model Session {
   @@map("sessions")
 }
 
-// Updated User model with warehouse relations
+// User model with warehouse relations - RBAC KEPT
 model User {
   id           String  @id @default(uuid())
   email        String? @unique
@@ -58,25 +58,22 @@ model User {
   isActive    Boolean   @default(true)
   lastLoginAt DateTime?
 
-  // Security and permissions
+  // Security and permissions - RBAC KEPT
   role          UserRole         @default(USER)
   permissions   UserPermission[]
   notifications Notification[]
 
-  // NEW: Warehouse associations
+  // Warehouse associations
   assignedWarehouses UserWarehouse[]
   defaultWarehouse   Warehouse?      @relation("DefaultWarehouse", fields: [defaultWarehouseId], references: [id])
   defaultWarehouseId String?
 
-  // Existing relationships for audit trails
+  // Existing relationships for audit trails - REMOVED APPROVAL RELATIONS
   accounts             Account[]
   sessions             Session[]
-  purchasesCreated     Purchase[]            @relation("PurchaseCreatedBy")
-  purchasesApproved    Purchase[]            @relation("PurchaseApprovedBy")
+  itemEntriesCreated   ItemEntry[]           @relation("ItemEntryCreatedBy")
   transfersCreated     Transfer[]            @relation("TransferCreatedBy")
-  transfersApproved    Transfer[]            @relation("TransferApprovedBy")
-  withdrawalsRequested Withdrawal[]          @relation("WithdrawalRequestedBy")
-  withdrawalsApproved  Withdrawal[]          @relation("WithdrawalApprovedBy")
+  withdrawalsCreated   Withdrawal[]          @relation("WithdrawalCreatedBy")
   inventoryAdjustments InventoryAdjustment[]
   auditLogs            AuditLog[]
 
@@ -95,7 +92,7 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-// User Permission System
+// User Permission System - RBAC KEPT
 model UserPermission {
   id         String     @id @default(uuid())
   permission Permission
@@ -117,7 +114,7 @@ model Item {
   itemCode      String  @unique
   description   String
   unitOfMeasure String
-  standardCost  Decimal @db.Decimal(10, 6) // Higher precision for cost calculations
+  standardCost  Decimal @db.Decimal(10, 6)
 
   // Cost accounting settings
   costingMethod CostingMethodType @default(WEIGHTED_AVERAGE)
@@ -130,7 +127,7 @@ model Item {
   supplierId String
 
   // Inventory tracking
-  purchaseItems      PurchaseItem[]
+  itemEntries        ItemEntry[] // REPLACED purchaseItems with direct entries
   inventoryMovements InventoryMovement[]
   withdrawalItems    WithdrawalItem[]
   transferItems      TransferItem[]
@@ -153,8 +150,8 @@ model Supplier {
   contactInfo       String?
   purchaseReference String?
 
-  items     Item[]
-  purchases Purchase[]
+  items       Item[]
+  itemEntries ItemEntry[] // REPLACED purchases with direct entries
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -174,6 +171,7 @@ model Warehouse {
   defaultCostingMethod CostingMethodType @default(WEIGHTED_AVERAGE)
 
   // Inventory at this location
+  itemEntries        ItemEntry[] // REPLACED purchaseItems
   inventoryMovements InventoryMovement[]
   withdrawals        Withdrawal[]
   transfersFrom      Transfer[]               @relation("TransferFrom")
@@ -185,7 +183,7 @@ model Warehouse {
   currentInventory   CurrentInventory[]
   adjustments        InventoryAdjustment[]
 
-  // NEW: User-Warehouse relationships
+  // User-Warehouse relationships
   assignedUsers   UserWarehouse[]
   defaultForUsers User[]          @relation("DefaultWarehouse")
 
@@ -195,47 +193,35 @@ model Warehouse {
   @@map("warehouses")
 }
 
-// Purchase Management
-model Purchase {
-  id            String         @id @default(uuid())
-  purchaseOrder String         @unique
-  purchaseDate  DateTime       @default(now())
-  totalCost     Decimal        @db.Decimal(12, 2)
-  status        PurchaseStatus @default(PENDING)
+// Direct Item Entry (replaces Purchase model) - NO APPROVAL NEEDED
+model ItemEntry {
+  id                String   @id @default(uuid())
+  quantity          Decimal  @db.Decimal(10, 4)
+  landedCost        Decimal  @db.Decimal(10, 6) // Cost per unit including all charges
+  totalValue        Decimal  @db.Decimal(12, 2) // quantity * landedCost
+  purchaseReference String? // PO, Invoice, etc.
+  notes             String?
+  entryDate         DateTime @default(now())
 
+  // Item and location
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+
+  // SUPPLIER IS REQUIRED - tracks where items came from
   supplier   Supplier @relation(fields: [supplierId], references: [id])
   supplierId String
 
-  // User tracking for audit
-  createdBy    User      @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
-  createdById  String
-  approvedBy   User?     @relation("PurchaseApprovedBy", fields: [approvedById], references: [id])
-  approvedById String?
-  approvedAt   DateTime?
-
-  purchaseItems PurchaseItem[]
+  // User who added this entry - NO APPROVAL TRACKING
+  createdBy   User   @relation("ItemEntryCreatedBy", fields: [createdById], references: [id])
+  createdById String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("purchases")
-}
-
-model PurchaseItem {
-  id        String  @id @default(uuid())
-  quantity  Decimal @db.Decimal(10, 4)
-  unitCost  Decimal @db.Decimal(10, 4)
-  totalCost Decimal @db.Decimal(12, 2)
-
-  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  purchaseId String
-
-  item   Item   @relation(fields: [itemId], references: [id])
-  itemId String
-
-  createdAt DateTime @default(now())
-
-  @@map("purchase_items")
+  @@map("item_entries")
 }
 
 // Inventory Movement Tracking
@@ -243,9 +229,9 @@ model InventoryMovement {
   id           String       @id @default(uuid())
   movementType MovementType
   quantity     Decimal      @db.Decimal(10, 4)
-  unitCost     Decimal?     @db.Decimal(10, 6) // Higher precision
+  unitCost     Decimal?     @db.Decimal(10, 6)
   totalValue   Decimal?     @db.Decimal(12, 2)
-  referenceId  String? // Reference to purchase, transfer, or withdrawal
+  referenceId  String? // Reference to entry, transfer, or withdrawal
   notes        String?
 
   // Cost accounting details
@@ -269,12 +255,12 @@ model InventoryMovement {
   @@map("inventory_movements")
 }
 
-// Transfer Management (Warehouse to Warehouse)
+// Transfer Management - NO APPROVAL NEEDED
 model Transfer {
   id             String         @id @default(uuid())
   transferNumber String         @unique
   transferDate   DateTime       @default(now())
-  status         TransferStatus @default(PENDING)
+  status         TransferStatus @default(COMPLETED) // Auto-complete since no approval
   notes          String?
 
   fromWarehouse   Warehouse @relation("TransferFrom", fields: [fromWarehouseId], references: [id])
@@ -283,12 +269,9 @@ model Transfer {
   toWarehouse   Warehouse @relation("TransferTo", fields: [toWarehouseId], references: [id])
   toWarehouseId String
 
-  // User tracking for audit
-  createdBy    User      @relation("TransferCreatedBy", fields: [createdById], references: [id])
-  createdById  String
-  approvedBy   User?     @relation("TransferApprovedBy", fields: [approvedById], references: [id])
-  approvedById String?
-  approvedAt   DateTime?
+  // User tracking - NO APPROVAL TRACKING
+  createdBy   User   @relation("TransferCreatedBy", fields: [createdById], references: [id])
+  createdById String
 
   transferItems TransferItem[]
 
@@ -313,23 +296,20 @@ model TransferItem {
   @@map("transfer_items")
 }
 
-// Withdrawal/Issuance Management
+// Withdrawal/Issuance Management - NO APPROVAL NEEDED
 model Withdrawal {
   id               String           @id @default(uuid())
   withdrawalNumber String           @unique
   withdrawalDate   DateTime         @default(now())
   purpose          String?
-  status           WithdrawalStatus @default(PENDING)
+  status           WithdrawalStatus @default(COMPLETED) // Auto-complete since no approval
 
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
   warehouseId String
 
-  // User tracking for audit
-  requestedBy   User      @relation("WithdrawalRequestedBy", fields: [requestedById], references: [id])
-  requestedById String
-  approvedBy    User?     @relation("WithdrawalApprovedBy", fields: [approvedById], references: [id])
-  approvedById  String?
-  approvedAt    DateTime?
+  // User tracking - NO APPROVAL TRACKING
+  createdBy   User   @relation("WithdrawalCreatedBy", fields: [createdById], references: [id])
+  createdById String
 
   withdrawalItems WithdrawalItem[]
 
@@ -342,7 +322,7 @@ model Withdrawal {
 model WithdrawalItem {
   id         String  @id @default(uuid())
   quantity   Decimal @db.Decimal(10, 4)
-  unitCost   Decimal @db.Decimal(10, 4)
+  unitCost   Decimal @db.Decimal(10, 4) // Weighted cost from warehouse
   totalValue Decimal @db.Decimal(12, 2)
 
   withdrawal   Withdrawal @relation(fields: [withdrawalId], references: [id], onDelete: Cascade)
@@ -380,11 +360,11 @@ model CostLayer {
   id           String        @id @default(uuid())
   quantity     Decimal       @db.Decimal(10, 4)
   remainingQty Decimal       @db.Decimal(10, 4)
-  unitCost     Decimal       @db.Decimal(10, 6) // Higher precision for cost calculations
+  unitCost     Decimal       @db.Decimal(10, 6)
   totalCost    Decimal       @db.Decimal(12, 2)
   layerDate    DateTime
   layerType    CostLayerType
-  sourceRef    String? // Reference to purchase, adjustment, etc.
+  sourceRef    String? // Reference to entry, adjustment, etc.
 
   item   Item   @relation(fields: [itemId], references: [id])
   itemId String
@@ -392,7 +372,6 @@ model CostLayer {
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
   warehouseId String
 
-  // Cost allocations from this layer
   costAllocations CostAllocation[]
 
   createdAt DateTime @default(now())
@@ -407,7 +386,7 @@ model CostAllocation {
   allocatedCost  Decimal         @db.Decimal(12, 2)
   allocationDate DateTime
   allocationType AlllocationType
-  referenceId    String // Reference to withdrawal, transfer, etc.
+  referenceId    String
 
   costLayer   CostLayer @relation(fields: [costLayerId], references: [id])
   costLayerId String
@@ -464,9 +443,8 @@ model AuditLog {
   action        AuditAction
   oldValues     Json?
   newValues     Json?
-  changedFields String[] // Array of field names that changed
+  changedFields String[]
 
-  // User context information
   user      User?   @relation(fields: [userId], references: [id])
   userId    String?
   userEmail String?
@@ -474,9 +452,8 @@ model AuditLog {
   ipAddress String?
   userAgent String?
 
-  // Business context
-  transactionType String? // PURCHASE, TRANSFER, WITHDRAWAL, etc.
-  referenceNumber String? // PO number, transfer number, etc.
+  transactionType String? // ITEM_ENTRY, TRANSFER, WITHDRAWAL, etc.
+  referenceNumber String?
   notes           String?
 
   timestamp DateTime @default(now())
@@ -500,15 +477,13 @@ model CostingMethod {
   warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
   warehouseId String?
 
-  // If both itemId and warehouseId are null, this is the global default
-
   createdAt DateTime @default(now())
 
   @@index([itemId, warehouseId, effectiveDate])
   @@map("costing_methods")
 }
 
-// Inventory Adjustment (New model for manual adjustments)
+// Inventory Adjustment
 model InventoryAdjustment {
   id               String         @id @default(uuid())
   adjustmentNumber String         @unique
@@ -519,7 +494,6 @@ model InventoryAdjustment {
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
   warehouseId String
 
-  // User tracking
   adjustedBy   User     @relation(fields: [adjustedById], references: [id])
   adjustedById String
   adjustedAt   DateTime @default(now())
@@ -534,9 +508,9 @@ model InventoryAdjustment {
 
 model InventoryAdjustmentItem {
   id                 String  @id @default(uuid())
-  systemQuantity     Decimal @db.Decimal(10, 4) // What system shows
-  actualQuantity     Decimal @db.Decimal(10, 4) // What was counted
-  adjustmentQuantity Decimal @db.Decimal(10, 4) // Difference
+  systemQuantity     Decimal @db.Decimal(10, 4)
+  actualQuantity     Decimal @db.Decimal(10, 4)
+  adjustmentQuantity Decimal @db.Decimal(10, 4)
   unitCost           Decimal @db.Decimal(10, 6)
   totalAdjustment    Decimal @db.Decimal(12, 2)
 
@@ -561,8 +535,7 @@ model CostVariance {
   quantity        Decimal      @db.Decimal(10, 4)
   totalVariance   Decimal      @db.Decimal(12, 2)
 
-  // Reference information
-  referenceType   String // PURCHASE, PRODUCTION, etc.
+  referenceType   String
   referenceId     String
   referenceNumber String?
 
@@ -578,30 +551,52 @@ model CostVariance {
   @@map("cost_variances")
 }
 
-// Enums
-enum PurchaseStatus {
-  PENDING
-  RECEIVED
-  PARTIALLY_RECEIVED
-  CANCELLED
+model Notification {
+  id            String           @id @default(uuid())
+  title         String
+  message       String
+  type          NotificationType @default(INFO)
+  isRead        Boolean          @default(false)
+  referenceId   String?
+  referenceType String?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
 }
 
+model UserWarehouse {
+  id          String        @id @default(uuid())
+  user        User          @relation(fields: [userId], references: [id])
+  userId      String
+  warehouse   Warehouse     @relation(fields: [warehouseId], references: [id])
+  warehouseId String
+  role        WarehouseRole
+
+  @@unique([userId, warehouseId])
+  @@map("user_warehouses")
+}
+
+// Enums - REMOVED PENDING STATUS SINCE NO APPROVAL
 enum TransferStatus {
-  PENDING
   IN_TRANSIT
   COMPLETED
   CANCELLED
 }
 
 enum WithdrawalStatus {
-  PENDING
-  APPROVED
   COMPLETED
-  REJECTED
+  CANCELLED
 }
 
 enum MovementType {
-  PURCHASE_RECEIPT
+  ITEM_ENTRY // RENAMED from PURCHASE_RECEIPT
   TRANSFER_IN
   TRANSFER_OUT
   WITHDRAWAL
@@ -611,16 +606,16 @@ enum MovementType {
 }
 
 enum CostingMethodType {
-  FIFO // First In, First Out
-  LIFO // Last In, First Out
-  WEIGHTED_AVERAGE // Weighted Average
-  MOVING_AVERAGE // Moving Average
-  STANDARD_COST // Standard Cost
-  SPECIFIC_IDENTIFICATION // Specific Item Identification
+  FIFO
+  LIFO
+  WEIGHTED_AVERAGE
+  MOVING_AVERAGE
+  STANDARD_COST
+  SPECIFIC_IDENTIFICATION
 }
 
 enum CostLayerType {
-  PURCHASE
+  ITEM_ENTRY // RENAMED from PURCHASE
   ADJUSTMENT_POSITIVE
   ADJUSTMENT_NEGATIVE
   TRANSFER_IN
@@ -644,8 +639,6 @@ enum AuditAction {
   LOGOUT
   EXPORT
   IMPORT
-  APPROVE
-  REJECT
 }
 
 enum VarianceType {
@@ -662,7 +655,6 @@ enum UserRole {
   WAREHOUSE_MANAGER
   INVENTORY_CLERK
   PURCHASER
-  APPROVER
   USER
   VIEWER
 }
@@ -674,21 +666,17 @@ enum Permission {
   DELETE_ITEMS
   VIEW_ITEMS
 
-  // Purchase Management
-  CREATE_PURCHASES
-  APPROVE_PURCHASES
-  VIEW_PURCHASES
-  CANCEL_PURCHASES
+  // Item Entry (Direct Purchase)
+  CREATE_ITEM_ENTRIES
+  VIEW_ITEM_ENTRIES
 
   // Transfer Management
   CREATE_TRANSFERS
-  APPROVE_TRANSFERS
   VIEW_TRANSFERS
   CANCEL_TRANSFERS
 
   // Withdrawal Management
-  REQUEST_WITHDRAWALS
-  APPROVE_WITHDRAWALS
+  CREATE_WITHDRAWALS
   VIEW_WITHDRAWALS
   CANCEL_WITHDRAWALS
 
@@ -719,43 +707,11 @@ enum AdjustmentType {
   REVALUATION
 }
 
-model Notification {
-  id            String           @id @default(uuid())
-  title         String
-  message       String
-  type          NotificationType @default(INFO)
-  isRead        Boolean          @default(false)
-  referenceId   String? // ID of related entity (item, purchase, etc.)
-  referenceType String? // Type of related entity (ITEM, PURCHASE, TRANSFER, etc.)
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId, isRead])
-  @@index([createdAt])
-  @@map("notifications")
-}
-
-// Add this enum to your existing enums section
 enum NotificationType {
   INFO
   SUCCESS
   WARNING
   ERROR
-}
-
-model UserWarehouse {
-  id          String        @id @default(uuid())
-  user        User          @relation(fields: [userId], references: [id])
-  userId      String
-  warehouse   Warehouse     @relation(fields: [warehouseId], references: [id])
-  warehouseId String
-  role        WarehouseRole // MANAGER, CLERK, VIEWER
-
-  @@unique([userId, warehouseId])
 }
 
 enum WarehouseRole {

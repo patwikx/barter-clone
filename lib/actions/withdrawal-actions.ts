@@ -13,24 +13,20 @@ export interface WithdrawalWithDetails {
   status: WithdrawalStatus
   createdAt: Date
   updatedAt: Date
-  approvedAt: Date | null
   warehouse: {
     id: string
     name: string
     location: string | null
+    description: string | null
   }
-  requestedBy: {
+  createdBy: {
     id: string
     username: string
     firstName: string | null
     lastName: string | null
+    position: string | null
+    department: string | null
   }
-  approvedBy: {
-    id: string
-    username: string
-    firstName: string | null
-    lastName: string | null
-  } | null
   withdrawalItems: Array<{
     id: string
     quantity: number
@@ -75,10 +71,8 @@ export interface WithdrawalFilters {
 
 export interface WithdrawalStats {
   totalWithdrawals: number
-  pendingWithdrawals: number
-  approvedWithdrawals: number
   completedWithdrawals: number
-  rejectedWithdrawals: number
+  cancelledWithdrawals: number
 }
 
 // Include type for withdrawal queries
@@ -87,23 +81,18 @@ const withdrawalInclude = {
     select: {
       id: true,
       name: true,
-      location: true
+      location: true,
+      description: true
     }
   },
-  requestedBy: {
+  createdBy: {
     select: {
       id: true,
       username: true,
       firstName: true,
-      lastName: true
-    }
-  },
-  approvedBy: {
-    select: {
-      id: true,
-      username: true,
-      firstName: true,
-      lastName: true
+      lastName: true,
+      position: true,
+      department: true
     }
   },
   withdrawalItems: {
@@ -155,10 +144,8 @@ function transformWithdrawal(withdrawal: RawWithdrawalWithDetails): WithdrawalWi
     status: withdrawal.status,
     createdAt: withdrawal.createdAt,
     updatedAt: withdrawal.updatedAt,
-    approvedAt: withdrawal.approvedAt,
     warehouse: withdrawal.warehouse,
-    requestedBy: withdrawal.requestedBy,
-    approvedBy: withdrawal.approvedBy,
+    createdBy: withdrawal.createdBy,
     withdrawalItems: withdrawal.withdrawalItems.map(item => ({
       id: item.id,
       quantity: Number(item.quantity),
@@ -239,13 +226,11 @@ export async function getWithdrawals(
 
     const transformedWithdrawals = withdrawals.map(transformWithdrawal)
 
-    // Calculate stats
+    // Calculate stats - updated to match schema
     const stats: WithdrawalStats = {
       totalWithdrawals: withdrawals.length,
-      pendingWithdrawals: withdrawals.filter(w => w.status === WithdrawalStatus.PENDING).length,
-      approvedWithdrawals: withdrawals.filter(w => w.status === WithdrawalStatus.APPROVED).length,
       completedWithdrawals: withdrawals.filter(w => w.status === WithdrawalStatus.COMPLETED).length,
-      rejectedWithdrawals: withdrawals.filter(w => w.status === WithdrawalStatus.REJECTED).length,
+      cancelledWithdrawals: withdrawals.filter(w => w.status === WithdrawalStatus.CANCELLED).length,
     }
 
     return {
@@ -263,7 +248,7 @@ export async function getWithdrawals(
   }
 }
 
-// Create new withdrawal
+// Create new withdrawal (auto-completes since no approval needed)
 export async function createWithdrawal(data: CreateWithdrawalInput): Promise<{
   success: boolean
   data?: WithdrawalWithDetails
@@ -292,7 +277,7 @@ export async function createWithdrawal(data: CreateWithdrawalInput): Promise<{
     const currentYear = new Date().getFullYear()
     const withdrawalNumber = `WTH-${currentYear}-${nextNumber.toString().padStart(3, '0')}`
 
-    // Calculate costs for withdrawal items
+    // Calculate costs for withdrawal items and validate inventory
     const withdrawalItemsWithCosts = await Promise.all(
       data.withdrawalItems.map(async (item) => {
         const currentInventory = await prisma.currentInventory.findUnique({
@@ -320,25 +305,93 @@ export async function createWithdrawal(data: CreateWithdrawalInput): Promise<{
       })
     )
 
-    const withdrawal = await prisma.withdrawal.create({
-      data: {
-        withdrawalNumber,
-        purpose: data.purpose,
-        status: WithdrawalStatus.PENDING,
-        warehouseId: data.warehouseId,
-        requestedById: session.user.id,
-        withdrawalItems: {
-          create: withdrawalItemsWithCosts
+    // Create withdrawal and process inventory movements in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create withdrawal with COMPLETED status (no approval needed)
+      const withdrawal = await tx.withdrawal.create({
+        data: {
+          withdrawalNumber,
+          purpose: data.purpose,
+          status: WithdrawalStatus.COMPLETED,
+          warehouseId: data.warehouseId,
+          createdById: session.user.id,
+          withdrawalItems: {
+            create: withdrawalItemsWithCosts
+          }
+        },
+        include: withdrawalInclude
+      })
+
+      // Create inventory movements and update current inventory
+      for (const withdrawalItem of withdrawalItemsWithCosts) {
+        // Get current inventory again within transaction
+        const currentInventory = await tx.currentInventory.findUnique({
+          where: {
+            itemId_warehouseId: {
+              itemId: withdrawalItem.itemId,
+              warehouseId: data.warehouseId
+            }
+          }
+        })
+
+        if (!currentInventory) {
+          throw new Error(`Current inventory not found for item ${withdrawalItem.itemId}`)
         }
-      },
-      include: withdrawalInclude
+
+        const newQuantity = Number(currentInventory.quantity) - withdrawalItem.quantity
+        const newValue = Number(currentInventory.totalValue) - withdrawalItem.totalValue
+
+        // Get item for costing method
+        const item = await tx.item.findUnique({
+          where: { id: withdrawalItem.itemId },
+          select: { costingMethod: true }
+        })
+
+        if (!item) {
+          throw new Error(`Item not found: ${withdrawalItem.itemId}`)
+        }
+
+        // Create withdrawal movement
+        await tx.inventoryMovement.create({
+          data: {
+            movementType: MovementType.WITHDRAWAL,
+            quantity: -withdrawalItem.quantity,
+            unitCost: withdrawalItem.unitCost,
+            totalValue: -withdrawalItem.totalValue,
+            referenceId: withdrawal.id,
+            notes: data.purpose || 'Material withdrawal',
+            itemId: withdrawalItem.itemId,
+            warehouseId: data.warehouseId,
+            balanceQuantity: newQuantity,
+            balanceValue: newValue,
+            costMethod: item.costingMethod
+          }
+        })
+
+        // Update current inventory
+        await tx.currentInventory.update({
+          where: {
+            itemId_warehouseId: {
+              itemId: withdrawalItem.itemId,
+              warehouseId: data.warehouseId
+            }
+          },
+          data: {
+            quantity: newQuantity,
+            totalValue: newValue,
+            avgUnitCost: newQuantity > 0 ? newValue / newQuantity : 0
+          }
+        })
+      }
+
+      return withdrawal
     })
 
     revalidatePath('/dashboard/withdrawals')
     
     return {
       success: true,
-      data: transformWithdrawal(withdrawal)
+      data: transformWithdrawal(result)
     }
 
   } catch (error) {
@@ -350,8 +403,8 @@ export async function createWithdrawal(data: CreateWithdrawalInput): Promise<{
   }
 }
 
-// Approve withdrawal
-export async function approveWithdrawal(withdrawalId: string): Promise<{
+// Cancel withdrawal
+export async function cancelWithdrawal(withdrawalId: string): Promise<{
   success: boolean
   data?: WithdrawalWithDetails
   error?: string
@@ -378,74 +431,74 @@ export async function approveWithdrawal(withdrawalId: string): Promise<{
       return { success: false, error: "Withdrawal not found" }
     }
 
-    if (withdrawal.status !== WithdrawalStatus.PENDING) {
-      return { success: false, error: "Withdrawal is not in pending status" }
+    if (withdrawal.status === WithdrawalStatus.CANCELLED) {
+      return { success: false, error: "Withdrawal is already cancelled" }
     }
 
-    // Start transaction to approve withdrawal and create inventory movements
+    // If withdrawal is completed, we need to reverse the inventory movements
     const result = await prisma.$transaction(async (tx) => {
+      if (withdrawal.status === WithdrawalStatus.COMPLETED) {
+        // Reverse inventory movements
+        for (const withdrawalItem of withdrawal.withdrawalItems) {
+          // Get current inventory
+          const currentInventory = await tx.currentInventory.findUnique({
+            where: {
+              itemId_warehouseId: {
+                itemId: withdrawalItem.itemId,
+                warehouseId: withdrawal.warehouseId
+              }
+            }
+          })
+
+          if (!currentInventory) {
+            throw new Error(`Current inventory not found for item ${withdrawalItem.item.itemCode}`)
+          }
+
+          const newQuantity = Number(currentInventory.quantity) + Number(withdrawalItem.quantity)
+          const newValue = Number(currentInventory.totalValue) + Number(withdrawalItem.totalValue)
+
+          // Create reversal movement
+          await tx.inventoryMovement.create({
+            data: {
+              movementType: MovementType.WITHDRAWAL,
+              quantity: Number(withdrawalItem.quantity), // Positive to reverse
+              unitCost: Number(withdrawalItem.unitCost),
+              totalValue: Number(withdrawalItem.totalValue),
+              referenceId: withdrawalId,
+              notes: `Reversal of withdrawal ${withdrawal.withdrawalNumber}`,
+              itemId: withdrawalItem.itemId,
+              warehouseId: withdrawal.warehouseId,
+              balanceQuantity: newQuantity,
+              balanceValue: newValue,
+              costMethod: withdrawalItem.item.costingMethod
+            }
+          })
+
+          // Update current inventory
+          await tx.currentInventory.update({
+            where: {
+              itemId_warehouseId: {
+                itemId: withdrawalItem.itemId,
+                warehouseId: withdrawal.warehouseId
+              }
+            },
+            data: {
+              quantity: newQuantity,
+              totalValue: newValue,
+              avgUnitCost: newQuantity > 0 ? newValue / newQuantity : 0
+            }
+          })
+        }
+      }
+
       // Update withdrawal status
       const updatedWithdrawal = await tx.withdrawal.update({
         where: { id: withdrawalId },
         data: {
-          status: WithdrawalStatus.COMPLETED,
-          approvedById: session.user.id,
-          approvedAt: new Date()
+          status: WithdrawalStatus.CANCELLED
         },
         include: withdrawalInclude
       })
-
-      // Create inventory movements and update current inventory
-      for (const withdrawalItem of withdrawal.withdrawalItems) {
-        // Get current inventory
-        const currentInventory = await tx.currentInventory.findUnique({
-          where: {
-            itemId_warehouseId: {
-              itemId: withdrawalItem.itemId,
-              warehouseId: withdrawal.warehouseId
-            }
-          }
-        })
-
-        if (!currentInventory || Number(currentInventory.quantity) < Number(withdrawalItem.quantity)) {
-          throw new Error(`Insufficient inventory for item ${withdrawalItem.item.itemCode}`)
-        }
-
-        const newQuantity = Number(currentInventory.quantity) - Number(withdrawalItem.quantity)
-        const newValue = Number(currentInventory.totalValue) - Number(withdrawalItem.totalValue)
-
-        // Create withdrawal movement
-        await tx.inventoryMovement.create({
-          data: {
-            movementType: MovementType.WITHDRAWAL,
-            quantity: -Number(withdrawalItem.quantity),
-            unitCost: Number(withdrawalItem.unitCost),
-            totalValue: -Number(withdrawalItem.totalValue),
-            referenceId: withdrawalId,
-            notes: withdrawal.purpose || 'Material withdrawal',
-            itemId: withdrawalItem.itemId,
-            warehouseId: withdrawal.warehouseId,
-            balanceQuantity: newQuantity,
-            balanceValue: newValue,
-            costMethod: withdrawalItem.item.costingMethod
-          }
-        })
-
-        // Update current inventory
-        await tx.currentInventory.update({
-          where: {
-            itemId_warehouseId: {
-              itemId: withdrawalItem.itemId,
-              warehouseId: withdrawal.warehouseId
-            }
-          },
-          data: {
-            quantity: newQuantity,
-            totalValue: newValue,
-            avgUnitCost: newQuantity > 0 ? newValue / newQuantity : 0
-          }
-        })
-      }
 
       return updatedWithdrawal
     })
@@ -459,10 +512,10 @@ export async function approveWithdrawal(withdrawalId: string): Promise<{
     }
 
   } catch (error) {
-    console.error('Error approving withdrawal:', error)
+    console.error('Error cancelling withdrawal:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to approve withdrawal'
+      error: error instanceof Error ? error.message : 'Failed to cancel withdrawal'
     }
   }
 }
@@ -502,7 +555,63 @@ export async function getWithdrawalById(withdrawalId: string): Promise<{
   }
 }
 
-// Delete withdrawal
+// Update withdrawal (only for non-completed withdrawals)
+export async function updateWithdrawal(
+  withdrawalId: string, 
+  data: UpdateWithdrawalInput
+): Promise<{
+  success: boolean
+  data?: WithdrawalWithDetails
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // Check if withdrawal exists and can be updated
+    const existingWithdrawal = await prisma.withdrawal.findUnique({
+      where: { id: withdrawalId },
+      select: { status: true }
+    })
+
+    if (!existingWithdrawal) {
+      return { success: false, error: "Withdrawal not found" }
+    }
+
+    if (existingWithdrawal.status === WithdrawalStatus.COMPLETED) {
+      return { success: false, error: "Cannot update completed withdrawal" }
+    }
+
+    const withdrawal = await prisma.withdrawal.update({
+      where: { id: withdrawalId },
+      data: {
+        purpose: data.purpose,
+        warehouseId: data.warehouseId,
+        status: data.status
+      },
+      include: withdrawalInclude
+    })
+
+    revalidatePath('/dashboard/withdrawals')
+    revalidatePath(`/dashboard/withdrawals/${withdrawalId}`)
+    
+    return {
+      success: true,
+      data: transformWithdrawal(withdrawal)
+    }
+
+  } catch (error) {
+    console.error('Error updating withdrawal:', error)
+    return {
+      success: false,
+      error: 'Failed to update withdrawal'
+    }
+  }
+}
+
+// Delete withdrawal (only for cancelled withdrawals)
 export async function deleteWithdrawal(withdrawalId: string): Promise<{
   success: boolean
   error?: string
@@ -524,7 +633,7 @@ export async function deleteWithdrawal(withdrawalId: string): Promise<{
     }
 
     if (withdrawal.status === WithdrawalStatus.COMPLETED) {
-      return { success: false, error: "Cannot delete completed withdrawal" }
+      return { success: false, error: "Cannot delete completed withdrawal. Cancel it first." }
     }
 
     await prisma.withdrawal.delete({

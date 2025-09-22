@@ -11,7 +11,6 @@ import {
   Eye,
   Edit,
   CheckCircle,
-  Clock,
   XCircle,
   Truck,
   Calendar,
@@ -47,8 +46,6 @@ interface TransfersViewProps {
 
 const getStatusIcon = (status: TransferStatus) => {
   switch (status) {
-    case TransferStatus.PENDING:
-      return Clock
     case TransferStatus.IN_TRANSIT:
       return Truck
     case TransferStatus.COMPLETED:
@@ -56,14 +53,12 @@ const getStatusIcon = (status: TransferStatus) => {
     case TransferStatus.CANCELLED:
       return XCircle
     default:
-      return Clock
+      return CheckCircle
   }
 }
 
 const getStatusColor = (status: TransferStatus) => {
   switch (status) {
-    case TransferStatus.PENDING:
-      return "bg-yellow-100 text-yellow-800"
     case TransferStatus.IN_TRANSIT:
       return "bg-blue-100 text-blue-800"
     case TransferStatus.COMPLETED:
@@ -71,7 +66,7 @@ const getStatusColor = (status: TransferStatus) => {
     case TransferStatus.CANCELLED:
       return "bg-red-100 text-red-800"
     default:
-      return "bg-gray-100 text-gray-800"
+      return "bg-green-100 text-green-800"
   }
 }
 
@@ -156,7 +151,7 @@ export function TransfersView({
           </div>
         </div>
 
-        {/* Summary Cards */}
+        {/* Summary Cards - Updated to match new schema */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
@@ -168,19 +163,6 @@ export function TransfersView({
                 </div>
                 <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center">
                   <ArrowRightLeft className="w-7 h-7 text-blue-600" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">Pending</p>
-                  <p className="text-3xl font-bold text-orange-600">{formatNumber(stats.pendingTransfers)}</p>
-                  <p className="text-sm text-gray-500 mt-1">Awaiting approval</p>
-                </div>
-                <div className="w-14 h-14 bg-orange-100 rounded-xl flex items-center justify-center">
-                  <Clock className="w-7 h-7 text-orange-600" />
                 </div>
               </div>
             </div>
@@ -207,6 +189,19 @@ export function TransfersView({
                 </div>
                 <div className="w-14 h-14 bg-green-100 rounded-xl flex items-center justify-center">
                   <CheckCircle className="w-7 h-7 text-green-600" />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600 mb-1">Cancelled</p>
+                  <p className="text-3xl font-bold text-red-600">{formatNumber(stats.cancelledTransfers)}</p>
+                  <p className="text-sm text-gray-500 mt-1">Cancelled transfers</p>
+                </div>
+                <div className="w-14 h-14 bg-red-100 rounded-xl flex items-center justify-center">
+                  <XCircle className="w-7 h-7 text-red-600" />
                 </div>
               </div>
             </div>
@@ -391,8 +386,7 @@ export function TransfersView({
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[140px]">Date</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">Status</th>
                     <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">Items</th>
-                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">Created By</th>
-                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]">Approved By</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[140px]">Created By</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider w-[80px]">Actions</th>
                   </tr>
                 </thead>
@@ -401,10 +395,6 @@ export function TransfersView({
                     const StatusIcon = getStatusIcon(transfer.status)
                     const createdByName = [transfer.createdBy.firstName, transfer.createdBy.lastName]
                       .filter(Boolean).join(' ') || transfer.createdBy.username
-                    const approvedByName = transfer.approvedBy 
-                      ? [transfer.approvedBy.firstName, transfer.approvedBy.lastName]
-                          .filter(Boolean).join(' ') || transfer.approvedBy.username
-                      : null
 
                     return (
                       <tr key={transfer.id} className="hover:bg-gray-50 transition-colors">
@@ -468,25 +458,11 @@ export function TransfersView({
                             </span>
                           </div>
                         </td>
-                        <td className="py-4 px-4 whitespace-nowrap max-w-[120px]">
+                        <td className="py-4 px-4 whitespace-nowrap max-w-[140px]">
                           <div className="text-sm text-gray-900 truncate">{createdByName}</div>
-                        </td>
-                        <td className="py-4 px-4 whitespace-nowrap max-w-[120px]">
-                          {approvedByName ? (
-                            <div>
-                              <div className="text-sm text-gray-900 truncate">{approvedByName}</div>
-                              {transfer.approvedAt && (
-                                <div className="text-xs text-gray-500 truncate">
-                                  {transfer.approvedAt.toLocaleDateString('en-PH', {
-                                    month: 'short',
-                                    day: 'numeric'
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
+                          <div className="text-xs text-gray-500 truncate">
+                            @{transfer.createdBy.username}
+                          </div>
                         </td>
                         <td className="py-4 px-4 whitespace-nowrap">
                           <DropdownMenu>
@@ -503,21 +479,19 @@ export function TransfersView({
                                   View Details
                                 </Link>
                               </DropdownMenuItem>
-                              {transfer.status === TransferStatus.PENDING && (
+                              {transfer.status !== TransferStatus.CANCELLED && (
                                 <>
                                   <DropdownMenuItem>
                                     <Edit className="w-4 h-4 mr-2" />
                                     Edit Transfer
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
-                                  <DropdownMenuItem>
-                                    <CheckCircle className="w-4 h-4 mr-2" />
-                                    Approve Transfer
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem className="text-red-600">
-                                    <XCircle className="w-4 h-4 mr-2" />
-                                    Cancel Transfer
-                                  </DropdownMenuItem>
+                                  {transfer.status === TransferStatus.COMPLETED && (
+                                    <DropdownMenuItem className="text-red-600">
+                                      <XCircle className="w-4 h-4 mr-2" />
+                                      Cancel Transfer
+                                    </DropdownMenuItem>
+                                  )}
                                 </>
                               )}
                             </DropdownMenuContent>

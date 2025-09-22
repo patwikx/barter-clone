@@ -3,7 +3,6 @@
 import React, { useState, useTransition } from "react"
 import {
   Package,
-  ShoppingCart,
   ArrowRightLeft,
   Truck,
   AlertTriangle,
@@ -18,6 +17,7 @@ import {
   XCircle,
   Eye,
   ArrowUpRight,
+  Plus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -34,8 +34,8 @@ interface DashboardViewProps {
 
 const getActivityIcon = (type: string) => {
   switch (type) {
-    case 'PURCHASE':
-      return ShoppingCart
+    case 'ITEM_ENTRY':
+      return Plus
     case 'TRANSFER':
       return ArrowRightLeft
     case 'WITHDRAWAL':
@@ -49,18 +49,12 @@ const getActivityIcon = (type: string) => {
 
 const getStatusVariant = (status: string): { className: string; icon: React.ElementType } => {
   switch (status.toLowerCase()) {
-    case 'pending':
-      return { className: "bg-amber-50 text-amber-700 border-amber-200", icon: Clock }
-    case 'approved':
-      return { className: "bg-blue-50 text-blue-700 border-blue-200", icon: CheckCircle }
+    case 'in_transit':
+      return { className: "bg-blue-50 text-blue-700 border-blue-200", icon: Activity }
     case 'completed':
-    case 'received':
       return { className: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle }
     case 'cancelled':
-    case 'rejected':
       return { className: "bg-red-50 text-red-700 border-red-200", icon: XCircle }
-    case 'in_transit':
-      return { className: "bg-purple-50 text-purple-700 border-purple-200", icon: Activity }
     default:
       return { className: "bg-slate-50 text-slate-700 border-slate-200", icon: Activity }
   }
@@ -124,6 +118,9 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
   const stockHealthPercentage = stats.inventory.totalItems > 0 
     ? ((stats.inventory.totalItems - stats.inventory.lowStockItems - stats.inventory.outOfStockItems) / stats.inventory.totalItems) * 100 
     : 100
+
+  // Calculate active operations based on simplified workflow
+  const activeOperations = stats.transfers.inTransitTransfers
 
   return (
     <div className="space-y-8 p-8 bg-slate-50/50 min-h-screen">
@@ -193,9 +190,9 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
               <div className="space-y-1">
                 <p className="text-xs font-medium text-slate-600">Active Operations</p>
                 <p className="text-xl font-bold text-slate-900">
-                  {stats.purchases.pendingPurchases + stats.transfers.pendingTransfers + stats.transfers.inTransitTransfers + stats.withdrawals.pendingWithdrawals}
+                  {activeOperations}
                 </p>
-                <p className="text-xs text-slate-500">Pending approvals & in-transit</p>
+                <p className="text-xs text-slate-500">Transfers in-transit</p>
               </div>
               <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
                 <Activity className="w-5 h-5 text-purple-600" />
@@ -208,11 +205,11 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-medium text-slate-600">Monthly Purchases</p>
+                <p className="text-xs font-medium text-slate-600">Monthly Item Entries</p>
                 <p className="text-xl font-bold text-slate-900">
-                  {formatCurrency(stats.purchases.totalValue)}
+                  {formatCurrency(stats.itemEntries.thisMonthValue)}
                 </p>
-                <p className="text-xs text-slate-500">{stats.purchases.thisMonthPurchases} orders this month</p>
+                <p className="text-xs text-slate-500">{stats.itemEntries.thisMonthEntries} entries this month</p>
               </div>
               <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-orange-600" />
@@ -260,15 +257,15 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
 
       {/* Operations Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Purchase Operations */}
+        {/* Item Entry Operations */}
         <Card className="border-0 shadow-sm bg-white">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <ShoppingCart className="w-5 h-5 text-blue-600" />
-                <h3 className="font-semibold text-slate-900">Purchase Operations</h3>
+                <Plus className="w-5 h-5 text-blue-600" />
+                <h3 className="font-semibold text-slate-900">Item Entry Operations</h3>
               </div>
-              <Link href="/dashboard/purchases">
+              <Link href="/dashboard/item-entries">
                 <Button variant="ghost" size="sm">
                   <Eye className="w-4 h-4" />
                 </Button>
@@ -278,24 +275,24 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Total Orders</span>
-                <span className="font-semibold text-slate-900">{formatNumber(stats.purchases.totalPurchases)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Pending Approval</span>
-                <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
-                  {stats.purchases.pendingPurchases}
-                </Badge>
+                <span className="text-sm text-slate-600">Total Entries</span>
+                <span className="font-semibold text-slate-900">{formatNumber(stats.itemEntries.totalEntries)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">This Month</span>
-                <span className="font-semibold text-slate-900">{formatNumber(stats.purchases.thisMonthPurchases)}</span>
+                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                  {stats.itemEntries.thisMonthEntries}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Monthly Value</span>
+                <span className="font-semibold text-slate-900">{formatCurrency(stats.itemEntries.thisMonthValue)}</span>
               </div>
             </div>
             <Separator />
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-slate-900">Total Value</span>
-              <span className="text-lg font-bold text-slate-900">{formatCurrency(stats.purchases.totalValue)}</span>
+              <span className="text-lg font-bold text-slate-900">{formatCurrency(stats.itemEntries.totalValue)}</span>
             </div>
           </CardContent>
         </Card>
@@ -322,15 +319,15 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
                 <span className="font-semibold text-slate-900">{formatNumber(stats.transfers.totalTransfers)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Pending</span>
-                <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
-                  {stats.transfers.pendingTransfers}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
                 <span className="text-sm text-slate-600">In Transit</span>
                 <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
                   {stats.transfers.inTransitTransfers}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">Completed</span>
+                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                  {stats.transfers.completedTransfers}
                 </Badge>
               </div>
             </div>
@@ -360,19 +357,19 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Total Requests</span>
+                <span className="text-sm text-slate-600">Total Withdrawals</span>
                 <span className="font-semibold text-slate-900">{formatNumber(stats.withdrawals.totalWithdrawals)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Pending</span>
-                <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">
-                  {stats.withdrawals.pendingWithdrawals}
+                <span className="text-sm text-slate-600">Completed</span>
+                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                  {stats.withdrawals.completedWithdrawals}
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Approved</span>
-                <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-                  {stats.withdrawals.approvedWithdrawals}
+                <span className="text-sm text-slate-600">Cancelled</span>
+                <Badge variant="secondary" className="bg-red-50 text-red-700 border-red-200">
+                  {stats.withdrawals.cancelledWithdrawals}
                 </Badge>
               </div>
             </div>
@@ -458,17 +455,17 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="grid grid-cols-1 gap-2">
-                <Link href="/dashboard/purchases/create" className="group">
+                <Link href="/dashboard/item-entries/create" className="group">
                   <div className="p-3 rounded-md border border-slate-100 hover:border-blue-200 hover:shadow-sm transition-all duration-200 cursor-pointer">
                     <div className="flex items-center space-x-3">
                       <div className="w-8 h-8 bg-blue-50 rounded-md flex items-center justify-center group-hover:bg-blue-100 transition-colors flex-shrink-0">
-                        <ShoppingCart className="w-4 h-4 text-blue-600" />
+                        <Plus className="w-4 h-4 text-blue-600" />
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-medium text-slate-900 group-hover:text-blue-700 transition-colors text-sm">
-                          Create Purchase Order
+                          Add Item Entry
                         </h4>
-                        <p className="text-xs text-slate-600">Order new inventory items</p>
+                        <p className="text-xs text-slate-600">Record new inventory items</p>
                       </div>
                     </div>
                   </div>
@@ -498,7 +495,7 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-medium text-slate-900 group-hover:text-emerald-700 transition-colors text-sm">
-                          Request Withdrawal
+                          Create Withdrawal
                         </h4>
                         <p className="text-xs text-slate-600">Request materials for production</p>
                       </div>

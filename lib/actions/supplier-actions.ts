@@ -14,7 +14,7 @@ export interface SupplierWithDetails {
   updatedAt: Date
   _count: {
     items: number
-    purchases: number
+    itemEntries: number
   }
 }
 
@@ -57,7 +57,7 @@ const supplierInclude = {
   _count: {
     select: {
       items: true,
-      purchases: true
+      itemEntries: true
     }
   }
 } satisfies Prisma.SupplierInclude
@@ -168,6 +168,91 @@ export async function getSupplierById(supplierId: string): Promise<{
   }
 }
 
+// Get supplier with detailed information including recent entries
+export async function getSupplierDetails(supplierId: string): Promise<{
+  success: boolean
+  data?: SupplierWithDetails & {
+    recentItemEntries: Array<{
+      id: string
+      quantity: number
+      landedCost: number
+      totalValue: number
+      entryDate: Date
+      purchaseReference: string | null
+      item: {
+        itemCode: string
+        description: string
+      }
+      warehouse: {
+        name: string
+      }
+    }>
+  }
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    const supplier = await prisma.supplier.findUnique({
+      where: { id: supplierId },
+      include: {
+        ...supplierInclude,
+        itemEntries: {
+          take: 10,
+          orderBy: { entryDate: 'desc' },
+          include: {
+            item: {
+              select: {
+                itemCode: true,
+                description: true
+              }
+            },
+            warehouse: {
+              select: {
+                name: true
+              }
+            }
+          }
+        }
+      }
+    })
+
+    if (!supplier) {
+      return { success: false, error: "Supplier not found" }
+    }
+
+    // Convert Decimal types to numbers
+    const recentItemEntries = supplier.itemEntries.map(entry => ({
+      id: entry.id,
+      quantity: Number(entry.quantity),
+      landedCost: Number(entry.landedCost),
+      totalValue: Number(entry.totalValue),
+      entryDate: entry.entryDate,
+      purchaseReference: entry.purchaseReference,
+      item: entry.item,
+      warehouse: entry.warehouse
+    }))
+
+    return {
+      success: true,
+      data: {
+        ...supplier,
+        recentItemEntries
+      }
+    }
+
+  } catch (error) {
+    console.error('Error fetching supplier details:', error)
+    return {
+      success: false,
+      error: 'Failed to fetch supplier details'
+    }
+  }
+}
+
 // Create new supplier
 export async function createSupplier(data: CreateSupplierInput): Promise<{
   success: boolean
@@ -180,11 +265,16 @@ export async function createSupplier(data: CreateSupplierInput): Promise<{
       return { success: false, error: "Unauthorized" }
     }
 
+    // Validate required fields
+    if (!data.name || data.name.trim() === "") {
+      return { success: false, error: "Supplier name is required" }
+    }
+
     // Check if supplier name already exists
     const existingSupplier = await prisma.supplier.findFirst({
       where: { 
         name: {
-          equals: data.name,
+          equals: data.name.trim(),
           mode: 'insensitive'
         }
       }
@@ -196,9 +286,9 @@ export async function createSupplier(data: CreateSupplierInput): Promise<{
 
     const supplier = await prisma.supplier.create({
       data: {
-        name: data.name,
-        contactInfo: data.contactInfo,
-        purchaseReference: data.purchaseReference
+        name: data.name.trim(),
+        contactInfo: data.contactInfo?.trim() || null,
+        purchaseReference: data.purchaseReference?.trim() || null
       },
       include: supplierInclude
     })
@@ -231,19 +321,28 @@ export async function updateSupplier(supplierId: string, data: UpdateSupplierInp
       return { success: false, error: "Unauthorized" }
     }
 
+    // Validate supplier exists
+    const existingSupplier = await prisma.supplier.findUnique({
+      where: { id: supplierId }
+    })
+
+    if (!existingSupplier) {
+      return { success: false, error: "Supplier not found" }
+    }
+
     // Check if supplier name already exists (if updating name)
-    if (data.name) {
-      const existingSupplier = await prisma.supplier.findFirst({
+    if (data.name && data.name.trim() !== "") {
+      const nameConflict = await prisma.supplier.findFirst({
         where: {
           name: {
-            equals: data.name,
+            equals: data.name.trim(),
             mode: 'insensitive'
           },
           NOT: { id: supplierId }
         }
       })
 
-      if (existingSupplier) {
+      if (nameConflict) {
         return { success: false, error: "Supplier name already exists" }
       }
     }
@@ -251,16 +350,25 @@ export async function updateSupplier(supplierId: string, data: UpdateSupplierInp
     // Build update data with proper typing
     const updateData: {
       name?: string
-      contactInfo?: string
-      purchaseReference?: string
+      contactInfo?: string | null
+      purchaseReference?: string | null
       updatedAt: Date
     } = {
       updatedAt: new Date()
     }
 
-    if (data.name !== undefined) updateData.name = data.name
-    if (data.contactInfo !== undefined) updateData.contactInfo = data.contactInfo
-    if (data.purchaseReference !== undefined) updateData.purchaseReference = data.purchaseReference
+    if (data.name !== undefined) {
+      if (data.name.trim() === "") {
+        return { success: false, error: "Supplier name cannot be empty" }
+      }
+      updateData.name = data.name.trim()
+    }
+    if (data.contactInfo !== undefined) {
+      updateData.contactInfo = data.contactInfo?.trim() || null
+    }
+    if (data.purchaseReference !== undefined) {
+      updateData.purchaseReference = data.purchaseReference?.trim() || null
+    }
 
     const supplier = await prisma.supplier.update({
       where: { id: supplierId },
@@ -296,23 +404,33 @@ export async function deleteSupplier(supplierId: string): Promise<{
       return { success: false, error: "Unauthorized" }
     }
 
-    // Check if supplier has any items or purchases
+    // Validate supplier exists
+    const existingSupplier = await prisma.supplier.findUnique({
+      where: { id: supplierId }
+    })
+
+    if (!existingSupplier) {
+      return { success: false, error: "Supplier not found" }
+    }
+
+    // Check if supplier has any items
     const hasItems = await prisma.item.findFirst({
       where: { supplierId },
       select: { id: true }
     })
 
     if (hasItems) {
-      return { success: false, error: "Cannot delete supplier with existing items" }
+      return { success: false, error: "Cannot delete supplier with existing items. Please reassign items to another supplier first." }
     }
 
-    const hasPurchases = await prisma.purchase.findFirst({
+    // Check if supplier has any item entries
+    const hasItemEntries = await prisma.itemEntry.findFirst({
       where: { supplierId },
       select: { id: true }
     })
 
-    if (hasPurchases) {
-      return { success: false, error: "Cannot delete supplier with purchase history" }
+    if (hasItemEntries) {
+      return { success: false, error: "Cannot delete supplier with item entry history. This supplier has transaction records that must be preserved for audit purposes." }
     }
 
     await prisma.supplier.delete({
@@ -325,9 +443,127 @@ export async function deleteSupplier(supplierId: string): Promise<{
 
   } catch (error) {
     console.error('Error deleting supplier:', error)
+    
+    // Handle foreign key constraint errors
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2003') {
+        return {
+          success: false,
+          error: 'Cannot delete supplier as it is referenced by other records'
+        }
+      }
+    }
+    
     return {
       success: false,
       error: 'Failed to delete supplier'
+    }
+  }
+}
+
+// Get supplier statistics
+export async function getSupplierStats(supplierId: string): Promise<{
+  success: boolean
+  data?: {
+    totalItems: number
+    totalItemEntries: number
+    totalValue: number
+    averageEntryValue: number
+    lastEntryDate: Date | null
+    topItems: Array<{
+      itemCode: string
+      description: string
+      totalQuantity: number
+      totalValue: number
+      entryCount: number
+    }>
+  }
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    const [
+      totalItems,
+      itemEntriesStats,
+      lastEntry,
+      topItems
+    ] = await Promise.all([
+      prisma.item.count({
+        where: { supplierId }
+      }),
+      prisma.itemEntry.aggregate({
+        where: { supplierId },
+        _count: true,
+        _sum: { totalValue: true }
+      }),
+      prisma.itemEntry.findFirst({
+        where: { supplierId },
+        orderBy: { entryDate: 'desc' },
+        select: { entryDate: true }
+      }),
+      prisma.itemEntry.groupBy({
+        by: ['itemId'],
+        where: { supplierId },
+        _count: true,
+        _sum: {
+          quantity: true,
+          totalValue: true
+        },
+        orderBy: {
+          _sum: {
+            totalValue: 'desc'
+          }
+        },
+        take: 5
+      })
+    ])
+
+    // Get item details for top items
+    const topItemsWithDetails = await Promise.all(
+      topItems.map(async (item) => {
+        const itemDetails = await prisma.item.findUnique({
+          where: { id: item.itemId },
+          select: {
+            itemCode: true,
+            description: true
+          }
+        })
+        
+        return {
+          itemCode: itemDetails?.itemCode || 'Unknown',
+          description: itemDetails?.description || 'Unknown Item',
+          totalQuantity: item._sum.quantity ? Number(item._sum.quantity) : 0,
+          totalValue: item._sum.totalValue ? Number(item._sum.totalValue) : 0,
+          entryCount: item._count
+        }
+      })
+    )
+
+    const totalValue = Number(itemEntriesStats._sum.totalValue || 0)
+    const totalEntries = itemEntriesStats._count
+    const averageEntryValue = totalEntries > 0 ? totalValue / totalEntries : 0
+
+    return {
+      success: true,
+      data: {
+        totalItems,
+        totalItemEntries: totalEntries,
+        totalValue,
+        averageEntryValue,
+        lastEntryDate: lastEntry?.entryDate || null,
+        topItems: topItemsWithDetails
+      }
+    }
+
+  } catch (error) {
+    console.error('Error fetching supplier stats:', error)
+    return {
+      success: false,
+      error: 'Failed to fetch supplier statistics'
     }
   }
 }
