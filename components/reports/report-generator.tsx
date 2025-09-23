@@ -11,22 +11,16 @@ import {
   Filter,
   Eye,
   Calendar,
-  Calculator,
   TrendingUp,
   TrendingDown,
-  Activity,
-  AlertTriangle,
+  Calculator,
   Layers,
-  PieChart,
-  Target,
-  Truck,
-  ShoppingCart,
-  DollarSign,
-  Users,
+  AlertTriangle,
   CheckCircle,
   Clock,
-  ArrowUpDown,
-  Search
+  DollarSign,
+  Plus,
+  ArrowRightLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -34,10 +28,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
-import { generateReport, type ReportType, type ReportData } from "@/lib/actions/report-generator-actions"
 import { toast } from "sonner"
+import { generateReport } from "@/lib/actions/report-generator-actions"
+import { ReportsData } from "@/lib/actions/reports-actions"
+import { ReportType } from "@/types/report-types"
 
 interface ReportGeneratorProps {
   warehouses: Array<{ id: string; name: string; location: string | null }>
@@ -54,93 +50,76 @@ interface ReportFilters {
 }
 
 const reportTypes: Array<{ 
-  value: ReportType; 
-  label: string; 
-  description: string; 
-  icon: React.ElementType;
-  category: string;
-  features: string[];
+  value: ReportType
+  label: string
+  description: string
+  icon: React.ElementType
+  category: 'inventory' | 'transactions' | 'cost' | 'analysis'
 }> = [
-  // Inventory Reports
   {
     value: 'INVENTORY_SUMMARY',
     label: 'Inventory Summary',
     description: 'Current stock levels and values by warehouse',
     icon: Package,
-    category: 'Inventory',
-    features: ['Current Stock Levels', 'Valuation', 'Multi-Warehouse View']
+    category: 'inventory'
   },
   {
     value: 'INVENTORY_VALUATION',
     label: 'Inventory Valuation',
-    description: 'Detailed inventory valuation with costing methods',
-    icon: Calculator,
-    category: 'Inventory',
-    features: ['Weighted Average Cost', 'FIFO/LIFO Analysis', 'Cost Layers']
+    description: 'Detailed inventory valuation with landed costs',
+    icon: DollarSign,
+    category: 'inventory'
   },
-  {
-    value: 'LOW_STOCK_REPORT',
-    label: 'Low Stock Alert',
-    description: 'Items below reorder levels requiring attention',
-    icon: AlertTriangle,
-    category: 'Inventory',
-    features: ['Reorder Alerts', 'Safety Stock', 'Procurement Planning']
-  },
-  
-  // Movement Reports
   {
     value: 'STOCK_MOVEMENT',
     label: 'Stock Movement',
-    description: 'Complete audit trail of all inventory movements',
-    icon: Activity,
-    category: 'Movement',
-    features: ['Transaction History', 'Movement Types', 'Balance Tracking']
+    description: 'All inventory movements within date range',
+    icon: TrendingUp,
+    category: 'transactions'
+  },
+  {
+    value: 'LOW_STOCK_REPORT',
+    label: 'Low Stock Report',
+    description: 'Items below reorder levels requiring attention',
+    icon: AlertTriangle,
+    category: 'inventory'
+  },
+  {
+    value: 'ITEM_ENTRY_REPORT',
+    label: 'Item Entry Report',
+    description: 'All item entries with landed costs within period',
+    icon: Plus,
+    category: 'transactions'
   },
   {
     value: 'TRANSFER_REPORT',
-    label: 'Inter-warehouse Transfers',
-    description: 'Transfers between warehouse locations',
-    icon: Truck,
-    category: 'Movement',
-    features: ['Transfer Status', 'Transit Times', 'Location Mapping']
+    label: 'Transfer Report',
+    description: 'Inter-warehouse transfers and movements',
+    icon: ArrowRightLeft,
+    category: 'transactions'
   },
   {
     value: 'WITHDRAWAL_REPORT',
-    label: 'Material Withdrawals',
-    description: 'Items issued from warehouse',
+    label: 'Withdrawal Report',
+    description: 'Material withdrawals and issuances',
     icon: TrendingDown,
-    category: 'Movement',
-    features: ['Issue Tracking', 'Department Usage', 'Cost Allocation']
+    category: 'transactions'
   },
-
-  // Procurement Reports
-  {
-    value: 'ITEM_ENTRY_REPORT',
-    label: 'Item Entries',
-    description: 'Purchase receipts and item entries',
-    icon: ShoppingCart,
-    category: 'Procurement',
-    features: ['Purchase History', 'Supplier Performance', 'Cost Tracking']
-  },
-
-  // Analysis Reports
   {
     value: 'COST_ANALYSIS',
-    label: 'Cost Variance Analysis',
-    description: 'Cost analysis and variance reporting',
-    icon: PieChart,
-    category: 'Analysis',
-    features: ['Price Variance', 'Standard vs Actual', 'Trend Analysis']
+    label: 'Cost Analysis',
+    description: 'Cost variance and weighted average analysis',
+    icon: Calculator,
+    category: 'cost'
   }
 ]
 
-const reportCategories = [
-  { value: 'all', label: 'All Reports', icon: FileText },
-  { value: 'Inventory', label: 'Inventory Reports', icon: Package },
-  { value: 'Movement', label: 'Movement Reports', icon: Activity },
-  { value: 'Procurement', label: 'Procurement Reports', icon: ShoppingCart },
-  { value: 'Analysis', label: 'Analysis Reports', icon: PieChart }
-]
+const reportCategories = {
+  inventory: { label: 'Inventory Reports', color: 'text-blue-600', bgColor: 'bg-blue-50' },
+  transactions: { label: 'Transaction Reports', color: 'text-green-600', bgColor: 'bg-green-50' },
+  cost: { label: 'Cost Analysis', color: 'text-purple-600', bgColor: 'bg-purple-50' },
+  analysis: { label: 'Advanced Analysis', color: 'text-orange-600', bgColor: 'bg-orange-50' }
+}
 
 export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps) {
   const [filters, setFilters] = useState<ReportFilters>({
@@ -151,18 +130,8 @@ export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps)
     dateTo: '',
     includeZeroStock: false
   })
-  const [reportData, setReportData] = useState<ReportData | null>(null)
+  const [reportData, setReportData] = useState<ReportsData | null>(null)
   const [isPending, startTransition] = useTransition()
-  const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [searchTerm, setSearchTerm] = useState<string>('')
-
-  const filteredReportTypes = reportTypes.filter(rt => {
-    const matchesCategory = selectedCategory === 'all' || rt.category === selectedCategory
-    const matchesSearch = searchTerm === '' || 
-      rt.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      rt.description.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesCategory && matchesSearch
-  })
 
   const handleGenerateReport = () => {
     startTransition(async () => {
@@ -206,88 +175,78 @@ export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps)
 
   const selectedReportType = reportTypes.find(rt => rt.value === filters.reportType)
   const ReportIcon = selectedReportType?.icon || FileText
+  const categoryInfo = selectedReportType ? reportCategories[selectedReportType.category] : reportCategories.inventory
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  }
+
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat('en-PH').format(num)
+  }
 
   return (
     <div className="space-y-8">
-      {/* Report Selection */}
-      <Card className="shadow-lg border-0 bg-white">
-        <CardHeader className="bg-gradient-to-r from-blue-50 to-purple-50 border-b">
-          <CardTitle className="flex items-center text-2xl">
-            <FileText className="w-6 h-6 mr-3 text-blue-600" />
-            Professional Report Generator
+      {/* Report Type Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <BarChart3 className="w-5 h-5 mr-2" />
+            Report Configuration
           </CardTitle>
-          <p className="text-gray-600 mt-2">Generate comprehensive inventory and operational reports with advanced filtering options</p>
         </CardHeader>
-        <CardContent className="p-8 space-y-8">
-          {/* Category Filter & Search */}
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="flex-1">
-              <Label className="text-sm font-semibold text-gray-700 mb-3 block">Report Categories</Label>
-              <div className="flex flex-wrap gap-2">
-                {reportCategories.map((category) => {
-                  const CategoryIcon = category.icon
-                  return (
-                    <Button
-                      key={category.value}
-                      variant={selectedCategory === category.value ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedCategory(category.value)}
-                      className="flex items-center"
-                    >
-                      <CategoryIcon className="w-4 h-4 mr-2" />
-                      {category.label}
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-            <div className="w-full lg:w-80">
-              <Label className="text-sm font-semibold text-gray-700 mb-3 block">Search Reports</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search report types..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Report Type Selection */}
-          <div>
-            <Label className="text-sm font-semibold text-gray-700 mb-4 block">Available Reports</Label>
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredReportTypes.map((type) => {
-                const Icon = type.icon
-                const isSelected = filters.reportType === type.value
+        <CardContent className="space-y-6">
+          {/* Report Type Categories */}
+          <div className="space-y-4">
+            <Label className="text-base font-semibold text-gray-900">Report Type</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Object.entries(reportCategories).map(([category, info]) => {
+                const categoryReports = reportTypes.filter(rt => rt.category === category)
+                
                 return (
-                  <div
-                    key={type.value}
-                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:shadow-md ${
-                      isSelected 
-                        ? 'border-blue-500 bg-blue-50 shadow-md' 
-                        : 'border-gray-200 bg-white hover:border-blue-300'
-                    }`}
-                    onClick={() => setFilters(prev => ({ ...prev, reportType: type.value }))}
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <Icon className={`w-6 h-6 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />
-                      <Badge variant={isSelected ? "default" : "secondary"} className="text-xs">
-                        {type.category}
-                      </Badge>
-                    </div>
-                    <h3 className={`font-semibold mb-2 ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
-                      {type.label}
-                    </h3>
-                    <p className="text-sm text-gray-600 mb-3">{type.description}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {type.features.slice(0, 2).map((feature, idx) => (
-                        <span key={idx} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
-                          {feature}
-                        </span>
-                      ))}
+                  <div key={category} className={`border border-gray-200 rounded-lg p-4 ${info.bgColor}`}>
+                    <h4 className={`font-semibold ${info.color} mb-3`}>{info.label}</h4>
+                    <div className="space-y-2">
+                      {categoryReports.map((type) => {
+                        const Icon = type.icon
+                        const isSelected = filters.reportType === type.value
+                        
+                        return (
+                          <div
+                            key={type.value}
+                            className={`p-3 rounded-md border cursor-pointer transition-all ${
+                              isSelected 
+                                ? 'border-blue-500 bg-blue-50 shadow-sm' 
+                                : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+                            }`}
+                            onClick={() => setFilters(prev => ({ ...prev, reportType: type.value }))}
+                          >
+                            <div className="flex items-start space-x-3">
+                              <div className={`w-8 h-8 rounded-md flex items-center justify-center ${
+                                isSelected ? 'bg-blue-100' : 'bg-gray-100'
+                              }`}>
+                                <Icon className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-gray-600'}`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className={`font-medium text-sm ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
+                                  {type.label}
+                                </div>
+                                <div className="text-xs text-gray-600 mt-1">
+                                  {type.description}
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )
@@ -297,190 +256,96 @@ export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps)
 
           <Separator />
 
-          {/* Advanced Filters */}
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <Label className="text-lg font-semibold text-gray-800">Filter Options</Label>
-              <Badge variant="outline" className="flex items-center">
-                <ReportIcon className="w-3 h-3 mr-1" />
-                {selectedReportType?.label}
-              </Badge>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Warehouse Filter */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium text-gray-700 flex items-center">
-                  <Building className="w-4 h-4 mr-2 text-blue-600" />
-                  Warehouse Location
-                </Label>
-                <Select
-                  value={filters.warehouseId}
-                  onValueChange={(value) => setFilters(prev => ({ ...prev, warehouseId: value }))}
-                >
-                  <SelectTrigger className="h-11">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">
+          {/* Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Warehouse</Label>
+              <Select
+                value={filters.warehouseId}
+                onValueChange={(value) => setFilters(prev => ({ ...prev, warehouseId: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Warehouses</SelectItem>
+                  {warehouses.map((warehouse) => (
+                    <SelectItem key={warehouse.id} value={warehouse.id}>
                       <div className="flex items-center">
-                        <Building className="w-4 h-4 mr-2 text-gray-500" />
-                        <span className="font-medium">All Warehouses</span>
+                        <Building className="w-4 h-4 mr-2" />
+                        <span>{warehouse.name}</span>
+                        {warehouse.location && (
+                          <span className="text-gray-500 ml-2">({warehouse.location})</span>
+                        )}
                       </div>
                     </SelectItem>
-                    {warehouses.map((warehouse) => (
-                      <SelectItem key={warehouse.id} value={warehouse.id}>
-                        <div className="flex items-center justify-between w-full">
-                          <div className="flex items-center">
-                            <Building className="w-4 h-4 mr-2 text-blue-500" />
-                            <span>{warehouse.name}</span>
-                          </div>
-                          {warehouse.location && (
-                            <span className="text-xs text-gray-500 ml-2">({warehouse.location})</span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-              {/* Supplier Filter */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium text-gray-700 flex items-center">
-                  <Users className="w-4 h-4 mr-2 text-green-600" />
-                  Supplier
-                </Label>
-                <Select
-                  value={filters.supplierId}
-                  onValueChange={(value) => setFilters(prev => ({ ...prev, supplierId: value }))}
-                >
-                  <SelectTrigger className="h-11">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">
-                      <div className="flex items-center">
-                        <Users className="w-4 h-4 mr-2 text-gray-500" />
-                        <span className="font-medium">All Suppliers</span>
-                      </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Supplier</Label>
+              <Select
+                value={filters.supplierId}
+                onValueChange={(value) => setFilters(prev => ({ ...prev, supplierId: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Suppliers</SelectItem>
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier.id} value={supplier.id}>
+                      {supplier.name}
                     </SelectItem>
-                    {suppliers.map((supplier) => (
-                      <SelectItem key={supplier.id} value={supplier.id}>
-                        <div className="flex items-center">
-                          <Users className="w-4 h-4 mr-2 text-green-500" />
-                          <span>{supplier.name}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Quick Date Presets */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium text-gray-700 flex items-center">
-                  <Calendar className="w-4 h-4 mr-2 text-purple-600" />
-                  Quick Date Range
-                </Label>
-                <Select onValueChange={(value) => {
-                  const today = new Date()
-                  let fromDate = new Date()
-                  
-                  switch(value) {
-                    case 'today':
-                      fromDate = today
-                      break
-                    case 'week':
-                      fromDate.setDate(today.getDate() - 7)
-                      break
-                    case 'month':
-                      fromDate.setMonth(today.getMonth() - 1)
-                      break
-                    case 'quarter':
-                      fromDate.setMonth(today.getMonth() - 3)
-                      break
-                    case 'year':
-                      fromDate.setFullYear(today.getFullYear() - 1)
-                      break
-                    default:
-                      return
-                  }
-                  
-                  setFilters(prev => ({
-                    ...prev,
-                    dateFrom: fromDate.toISOString().split('T')[0],
-                    dateTo: today.toISOString().split('T')[0]
-                  }))
-                }}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder="Select preset..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="week">Last 7 Days</SelectItem>
-                    <SelectItem value="month">Last Month</SelectItem>
-                    <SelectItem value="quarter">Last Quarter</SelectItem>
-                    <SelectItem value="year">Last Year</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Custom Date Range */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <Label className="text-sm font-medium text-gray-700">Custom Date From</Label>
-                <Input
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-sm font-medium text-gray-700">Custom Date To</Label>
-                <Input
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
-                  className="h-11"
-                />
-              </div>
-            </div>
-
-            {/* Additional Options */}
-            <div className="flex items-center space-x-2 p-4 bg-gray-50 rounded-lg">
-              <Checkbox
-                id="includeZeroStock"
-                checked={filters.includeZeroStock}
-                onCheckedChange={(checked) => setFilters(prev => ({ ...prev, includeZeroStock: checked as boolean }))}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Date From</Label>
+              <Input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
               />
-              <Label htmlFor="includeZeroStock" className="text-sm font-medium text-gray-700 cursor-pointer">
-                Include items with zero stock in inventory reports
-              </Label>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Date To</Label>
+              <Input
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+              />
             </div>
           </div>
 
-          <Separator />
-
-          {/* Generate Report Actions */}
-          <div className="flex items-center justify-between pt-4">
-            <div className="flex items-center space-x-4">
-              <Button 
-                onClick={handleGenerateReport} 
-                disabled={isPending}
-                size="lg"
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-              >
+          {/* Additional Options */}
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="includeZeroStock"
+                checked={filters.includeZeroStock}
+                onCheckedChange={(checked) => setFilters(prev => ({ ...prev, includeZeroStock: checked }))}
+              />
+              <Label htmlFor="includeZeroStock" className="text-sm font-medium text-gray-700">
+                Include zero stock items
+              </Label>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <Button onClick={handleGenerateReport} disabled={isPending} className="h-10 px-6">
                 {isPending ? (
                   <>
-                    <Clock className="w-5 h-5 mr-2 animate-spin" />
+                    <Clock className="w-4 h-4 mr-2 animate-spin" />
                     Generating...
                   </>
                 ) : (
                   <>
-                    <BarChart3 className="w-5 h-5 mr-2" />
+                    <BarChart3 className="w-4 h-4 mr-2" />
                     Generate Report
                   </>
                 )}
@@ -488,52 +353,68 @@ export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps)
               
               {reportData && (
                 <div className="flex items-center space-x-2">
-                  <Button variant="outline" onClick={handleExportPDF} size="lg">
+                  <Button variant="outline" onClick={handleExportPDF} className="h-10 px-4">
                     <Printer className="w-4 h-4 mr-2" />
                     Print/PDF
                   </Button>
-                  <Button variant="outline" onClick={handleExportExcel} size="lg">
+                  <Button variant="outline" onClick={handleExportExcel} className="h-10 px-4">
                     <Download className="w-4 h-4 mr-2" />
                     Export Excel
                   </Button>
                 </div>
               )}
             </div>
+          </div>
 
-            {selectedReportType && (
-              <div className="text-right">
-                <div className="text-sm text-gray-600">Selected Report:</div>
-                <Badge variant="outline" className="text-sm mt-1">
-                  <ReportIcon className="w-3 h-3 mr-1" />
-                  {selectedReportType.label}
+          {/* Selected Report Info */}
+          {selectedReportType && (
+            <div className={`p-4 rounded-lg border ${categoryInfo.bgColor} border-gray-200`}>
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center border border-gray-200">
+                  <ReportIcon className={`w-5 h-5 ${categoryInfo.color}`} />
+                </div>
+                <div className="flex-1">
+                  <h4 className={`font-semibold ${categoryInfo.color}`}>{selectedReportType.label}</h4>
+                  <p className="text-sm text-gray-600 mt-1">{selectedReportType.description}</p>
+                </div>
+                <Badge variant="outline" className={`${categoryInfo.color} border-current`}>
+                  {categoryInfo.label.split(' ')[0]}
                 </Badge>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Report Preview */}
       {reportData && (
-        <Card className="shadow-lg border-0 bg-white">
-          <CardHeader className="bg-gradient-to-r from-green-50 to-blue-50 border-b">
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center text-xl">
-                <Eye className="w-6 h-6 mr-3 text-green-600" />
-                Report Preview
-              </span>
-              <div className="flex items-center space-x-4">
-                <Badge variant="secondary" className="px-3 py-1">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  {reportData.summary.totalRecords} records
-                </Badge>
-                <Badge variant="outline" className="px-3 py-1">
-                  Generated: {new Date(reportData.generatedAt).toLocaleString('en-PH')}
-                </Badge>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Eye className="w-5 h-5 text-blue-600" />
+                <div>
+                  <CardTitle>{reportData.title}</CardTitle>
+                  <p className="text-sm text-gray-600 mt-1">{reportData.subtitle}</p>
+                </div>
               </div>
-            </CardTitle>
+              <div className="flex items-center space-x-4">
+                <Badge variant="secondary" className="text-sm">
+                  {formatNumber(reportData.summary.totalRecords)} records
+                </Badge>
+                <div className="text-sm text-gray-500">
+                  Generated: {reportData.generatedAt.toLocaleString('en-PH', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </div>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent className="p-8">
+          <CardContent>
             <ReportPreview data={reportData} reportType={filters.reportType} />
           </CardContent>
         </Card>
@@ -542,8 +423,552 @@ export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps)
   )
 }
 
-// Enhanced Report Preview Component
-function ReportPreview({ data, reportType }: { data: ReportData; reportType: ReportType }) {
+// Report Preview Component
+interface ReportPreviewProps {
+  data: ReportData
+  reportType: ReportType
+}
+
+function ReportPreview({ data, reportType }: ReportPreviewProps) {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  }
+
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat('en-PH').format(num)
+  }
+
+  const formatDecimal = (num: number, decimals: number = 2) => {
+    return new Intl.NumberFormat('en-PH', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(num)
+  }
+
+  // Summary Cards
+  const SummaryCards = () => (
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-600">Total Records</p>
+            <p className="text-2xl font-bold text-blue-600">{formatNumber(data.summary.totalRecords)}</p>
+          </div>
+          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+            <FileText className="w-5 h-5 text-blue-600" />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-600">Total Quantity</p>
+            <p className="text-2xl font-bold text-green-600">{formatNumber(data.summary.totalQuantity)}</p>
+          </div>
+          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+            <Package className="w-5 h-5 text-green-600" />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-600">Total Value</p>
+            <p className="text-2xl font-bold text-purple-600">{formatCurrency(data.summary.totalValue)}</p>
+          </div>
+          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+            <DollarSign className="w-5 h-5 text-purple-600" />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-600">Average Value</p>
+            <p className="text-2xl font-bold text-orange-600">{formatCurrency(data.summary.averageValue)}</p>
+          </div>
+          <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+            <Calculator className="w-5 h-5 text-orange-600" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  switch (reportType) {
+    case 'INVENTORY_SUMMARY':
+      return (
+        <div className="space-y-6">
+          <SummaryCards />
+          
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h4 className="font-semibold text-gray-900 flex items-center">
+                <Package className="w-4 h-4 mr-2" />
+                Current Inventory Summary
+              </h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Item Code</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Warehouse</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Landed Cost</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data.records.map((record, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 text-sm font-mono font-medium text-gray-900">{record.itemCode}</td>
+                      <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">{record.description}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{record.warehouse}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{record.supplier || '-'}</td>
+                      <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatNumber(record.quantity)}</td>
+                      <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatCurrency(record.unitCost)}</td>
+                      <td className="py-3 px-4 text-sm font-semibold text-right text-gray-900">{formatCurrency(record.totalValue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'INVENTORY_VALUATION':
+      return (
+        <div className="space-y-6">
+          <SummaryCards />
+          
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h4 className="font-semibold text-gray-900 flex items-center">
+                <DollarSign className="w-4 h-4 mr-2" />
+                Inventory Valuation Details
+              </h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Item Code</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Weighted Avg Cost</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">% of Total</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data.records.map((record, index) => {
+                    const percentOfTotal = data.summary.totalValue > 0 
+                      ? (record.totalValue / data.summary.totalValue) * 100 
+                      : 0
+                    
+                    return (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="py-3 px-4 text-sm font-mono font-medium text-gray-900">{record.itemCode}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">{record.description}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{record.warehouse}</td>
+                        <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatNumber(record.quantity)}</td>
+                        <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatCurrency(record.unitCost)}</td>
+                        <td className="py-3 px-4 text-sm font-semibold text-right text-purple-600">{formatCurrency(record.totalValue)}</td>
+                        <td className="py-3 px-4 text-sm font-medium text-right text-gray-600">{formatDecimal(percentOfTotal, 1)}%</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'STOCK_MOVEMENT':
+      return (
+        <div className="space-y-6">
+          <SummaryCards />
+          
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h4 className="font-semibold text-gray-900 flex items-center">
+                <TrendingUp className="w-4 h-4 mr-2" />
+                Stock Movement History
+              </h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Item Code</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Warehouse</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Movement Type</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Landed Cost</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data.records.map((record, index) => {
+                    const isInbound = record.quantity > 0
+                    
+                    return (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="py-3 px-4 text-sm text-gray-600">{record.date}</td>
+                        <td className="py-3 px-4 text-sm font-mono font-medium text-gray-900">{record.itemCode}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">{record.description}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{record.warehouse}</td>
+                        <td className="py-3 px-4">
+                          <Badge variant="outline" className={isInbound ? 'text-green-700 border-green-200' : 'text-red-700 border-red-200'}>
+                            {record.status?.replace(/_/g, ' ')}
+                          </Badge>
+                        </td>
+                        <td className={`py-3 px-4 text-sm font-medium text-right ${isInbound ? 'text-green-600' : 'text-red-600'}`}>
+                          {isInbound ? '+' : ''}{formatNumber(Math.abs(record.quantity))}
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatCurrency(record.unitCost)}</td>
+                        <td className={`py-3 px-4 text-sm font-semibold text-right ${isInbound ? 'text-green-600' : 'text-red-600'}`}>
+                          {isInbound ? '+' : ''}{formatCurrency(Math.abs(record.totalValue))}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600 max-w-xs truncate">{record.reference || '-'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'LOW_STOCK_REPORT':
+      return (
+        <div className="space-y-6">
+          <SummaryCards />
+          
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-red-50">
+              <h4 className="font-semibold text-red-900 flex items-center">
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Low Stock Items Requiring Attention
+              </h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Item Code</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Warehouse</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Current Stock</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Avg Landed Cost</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                    <th className="text-center py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data.records.map((record, index) => {
+                    const priority = record.quantity === 0 ? 'Critical' : record.quantity < 10 ? 'High' : 'Medium'
+                    const priorityColor = priority === 'Critical' ? 'text-red-700 bg-red-100 border-red-200' :
+                                        priority === 'High' ? 'text-orange-700 bg-orange-100 border-orange-200' :
+                                        'text-yellow-700 bg-yellow-100 border-yellow-200'
+                    
+                    return (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="py-3 px-4 text-sm font-mono font-medium text-gray-900">{record.itemCode}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">{record.description}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{record.warehouse}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{record.supplier || '-'}</td>
+                        <td className="py-3 px-4 text-sm font-semibold text-right text-red-600">{formatNumber(record.quantity)}</td>
+                        <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatCurrency(record.unitCost)}</td>
+                        <td className="py-3 px-4 text-sm font-semibold text-right text-gray-900">{formatCurrency(record.totalValue)}</td>
+                        <td className="py-3 px-4 text-center">
+                          <Badge className={priorityColor}>
+                            {priority}
+                          </Badge>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'ITEM_ENTRY_REPORT':
+      return (
+        <div className="space-y-6">
+          <SummaryCards />
+          
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-green-50">
+              <h4 className="font-semibold text-green-900 flex items-center">
+                <Plus className="w-4 h-4 mr-2" />
+                Item Entry History
+              </h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Item Code</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Warehouse</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Landed Cost</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data.records.map((record, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 text-sm text-gray-600">{record.date}</td>
+                      <td className="py-3 px-4 text-sm font-mono font-medium text-gray-900">{record.itemCode}</td>
+                      <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">{record.description}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{record.warehouse}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{record.supplier || '-'}</td>
+                      <td className="py-3 px-4 text-sm font-medium text-right text-green-600">{formatNumber(record.quantity)}</td>
+                      <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatCurrency(record.unitCost)}</td>
+                      <td className="py-3 px-4 text-sm font-semibold text-right text-green-600">{formatCurrency(record.totalValue)}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600 max-w-xs truncate">{record.reference || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'TRANSFER_REPORT':
+      return (
+        <div className="space-y-6">
+          <SummaryCards />
+          
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-blue-50">
+              <h4 className="font-semibold text-blue-900 flex items-center">
+                <ArrowRightLeft className="w-4 h-4 mr-2" />
+                Inter-Warehouse Transfers
+              </h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Item Code</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Transfer Route</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data.records.map((record, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 text-sm text-gray-600">{record.date}</td>
+                      <td className="py-3 px-4 text-sm font-mono font-medium text-gray-900">{record.itemCode}</td>
+                      <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">{record.description}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{record.warehouse}</td>
+                      <td className="py-3 px-4 text-sm font-medium text-right text-blue-600">{formatNumber(record.quantity)}</td>
+                      <td className="py-3 px-4">
+                        <Badge variant="outline" className={
+                          record.status === 'COMPLETED' ? 'text-green-700 border-green-200' :
+                          record.status === 'IN_TRANSIT' ? 'text-blue-700 border-blue-200' :
+                          'text-red-700 border-red-200'
+                        }>
+                          {record.status?.replace(/_/g, ' ')}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600 max-w-xs truncate">{record.reference || '-'}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600 max-w-xs truncate">{record.notes || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'WITHDRAWAL_REPORT':
+      return (
+        <div className="space-y-6">
+          <SummaryCards />
+          
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-orange-50">
+              <h4 className="font-semibold text-orange-900 flex items-center">
+                <TrendingDown className="w-4 h-4 mr-2" />
+                Material Withdrawals
+              </h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Item Code</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Warehouse</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Landed Cost</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Purpose</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data.records.map((record, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 text-sm text-gray-600">{record.date}</td>
+                      <td className="py-3 px-4 text-sm font-mono font-medium text-gray-900">{record.itemCode}</td>
+                      <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">{record.description}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{record.warehouse}</td>
+                      <td className="py-3 px-4 text-sm font-medium text-right text-red-600">{formatNumber(record.quantity)}</td>
+                      <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatCurrency(record.unitCost)}</td>
+                      <td className="py-3 px-4 text-sm font-semibold text-right text-red-600">{formatCurrency(record.totalValue)}</td>
+                      <td className="py-3 px-4">
+                        <Badge variant="outline" className={
+                          record.status === 'COMPLETED' ? 'text-green-700 border-green-200' :
+                          'text-red-700 border-red-200'
+                        }>
+                          {record.status?.replace(/_/g, ' ')}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600 max-w-xs truncate">{record.notes || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )
+
+    case 'COST_ANALYSIS':
+      return (
+        <div className="space-y-6">
+          <SummaryCards />
+          
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-purple-50">
+              <h4 className="font-semibold text-purple-900 flex items-center">
+                <Calculator className="w-4 h-4 mr-2" />
+                Cost Variance Analysis
+              </h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Item Code</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Warehouse</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Actual Cost</th>
+                    <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Variance</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Variance Type</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {data.records.map((record, index) => {
+                    const isPositiveVariance = record.totalValue > 0
+                    
+                    return (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="py-3 px-4 text-sm text-gray-600">{record.date}</td>
+                        <td className="py-3 px-4 text-sm font-mono font-medium text-gray-900">{record.itemCode}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900 max-w-xs truncate">{record.description}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{record.warehouse}</td>
+                        <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatNumber(record.quantity)}</td>
+                        <td className="py-3 px-4 text-sm font-medium text-right text-gray-900">{formatCurrency(record.unitCost)}</td>
+                        <td className={`py-3 px-4 text-sm font-semibold text-right ${isPositiveVariance ? 'text-red-600' : 'text-green-600'}`}>
+                          {isPositiveVariance ? '+' : ''}{formatCurrency(record.totalValue)}
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge variant="outline">
+                            {record.status?.replace(/_/g, ' ')}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600 max-w-xs truncate">{record.notes || '-'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )
+
+    default:
+      return (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FileText className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Report Generated</h3>
+          <p className="text-gray-500 mb-4">
+            {formatNumber(data.summary.totalRecords)} records found
+          </p>
+          <div className="grid grid-cols-3 gap-4 max-w-md mx-auto">
+            <div className="text-center">
+              <div className="text-xl font-bold text-blue-600">{formatNumber(data.summary.totalQuantity)}</div>
+              <div className="text-xs text-gray-500">Total Quantity</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xl font-bold text-green-600">{formatCurrency(data.summary.totalValue)}</div>
+              <div className="text-xs text-gray-500">Total Value</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xl font-bold text-purple-600">{formatCurrency(data.summary.averageValue)}</div>
+              <div className="text-xs text-gray-500">Average Value</div>
+            </div>
+          </div>
+        </div>
+      )
+  }
+}
+
+// Helper functions for export
+function generatePrintableHTML(data: ReportData, filters: ReportFilters): string {
+  const currentDate = new Date().toLocaleDateString('en-PH', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+
+  const reportTitle = reportTypes.find(rt => rt.value === filters.reportType)?.label || 'Report'
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PH', {
       style: 'currency',
@@ -555,228 +980,34 @@ function ReportPreview({ data, reportType }: { data: ReportData; reportType: Rep
     return new Intl.NumberFormat('en-PH').format(num)
   }
 
-  const getSummaryCards = () => {
-    return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="text-center p-6 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200">
-          <FileText className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-          <div className="text-2xl font-bold text-blue-700">{formatNumber(data.summary.totalRecords)}</div>
-          <div className="text-sm text-blue-600 font-medium">Total Records</div>
-        </div>
-        <div className="text-center p-6 bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200">
-          <DollarSign className="w-8 h-8 text-green-600 mx-auto mb-2" />
-          <div className="text-2xl font-bold text-green-700">{formatCurrency(data.summary.totalValue)}</div>
-          <div className="text-sm text-green-600 font-medium">Total Value</div>
-        </div>
-        <div className="text-center p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200">
-          <Package className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-          <div className="text-2xl font-bold text-purple-700">{formatNumber(data.summary.totalQuantity)}</div>
-          <div className="text-sm text-purple-600 font-medium">Total Quantity</div>
-        </div>
-        <div className="text-center p-6 bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl border border-orange-200">
-          <Calculator className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-          <div className="text-2xl font-bold text-orange-700">{formatCurrency(data.summary.averageValue)}</div>
-          <div className="text-sm text-orange-600 font-medium">Average Value</div>
-        </div>
-      </div>
-    )
-  }
-
-  const getReportTable = () => {
-    const getColumns = () => {
-      switch (reportType) {
-        case 'INVENTORY_SUMMARY':
-        case 'INVENTORY_VALUATION':
-        case 'LOW_STOCK_REPORT':
-          return ['Item Code', 'Description', 'Warehouse', 'Supplier', 'Quantity', 'Unit Cost', 'Total Value']
-        case 'STOCK_MOVEMENT':
-          return ['Date', 'Item Code', 'Description', 'Movement Type', 'Quantity', 'Unit Cost', 'Balance']
-        case 'ITEM_ENTRY_REPORT':
-          return ['Date', 'Item Code', 'Description', 'Supplier', 'Quantity', 'Landed Cost', 'Total Value', 'Reference']
-        case 'TRANSFER_REPORT':
-          return ['Date', 'Transfer #', 'Item Code', 'Description', 'From → To', 'Quantity', 'Status']
-        case 'WITHDRAWAL_REPORT':
-          return ['Date', 'Withdrawal #', 'Item Code', 'Description', 'Quantity', 'Unit Cost', 'Total Value', 'Purpose']
-        case 'COST_ANALYSIS':
-          return ['Item Code', 'Description', 'Variance Type', 'Standard Cost', 'Actual Cost', 'Variance %', 'Total Variance']
-        default:
-          return ['Item Code', 'Description', 'Warehouse', 'Quantity', 'Unit Cost', 'Total Value']
-      }
-    }
-
-    const renderRow = (record: any, index: number) => {
-      switch (reportType) {
-        case 'INVENTORY_SUMMARY':
-        case 'INVENTORY_VALUATION':
-        case 'LOW_STOCK_REPORT':
-          return (
-            <tr key={index} className="hover:bg-gray-50 transition-colors">
-              <td className="border border-gray-200 px-4 py-3 font-mono text-sm">{record.itemCode}</td>
-              <td className="border border-gray-200 px-4 py-3 text-sm">{record.description}</td>
-              <td className="border border-gray-200 px-4 py-3 text-sm">{record.warehouse}</td>
-              <td className="border border-gray-200 px-4 py-3 text-sm">{record.supplier || 'N/A'}</td>
-              <td className="border border-gray-200 px-4 py-3 text-right text-sm font-medium">{formatNumber(record.quantity)}</td>
-              <td className="border border-gray-200 px-4 py-3 text-right text-sm">{formatCurrency(record.unitCost)}</td>
-              <td className="border border-gray-200 px-4 py-3 text-right text-sm font-semibold text-green-600">{formatCurrency(record.totalValue)}</td>
-            </tr>
-          )
-        default:
-          return (
-            <tr key={index} className="hover:bg-gray-50 transition-colors">
-              <td className="border border-gray-200 px-4 py-3 font-mono text-sm">{record.itemCode}</td>
-              <td className="border border-gray-200 px-4 py-3 text-sm">{record.description}</td>
-              <td className="border border-gray-200 px-4 py-3 text-sm">{record.warehouse}</td>
-              <td className="border border-gray-200 px-4 py-3 text-right text-sm font-medium">{formatNumber(record.quantity)}</td>
-              <td className="border border-gray-200 px-4 py-3 text-right text-sm">{formatCurrency(record.unitCost)}</td>
-              <td className="border border-gray-200 px-4 py-3 text-right text-sm font-semibold">{formatCurrency(record.totalValue)}</td>
-            </tr>
-          )
-      }
-    }
-
-    return (
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full border-collapse bg-white">
-          <thead>
-            <tr className="bg-gradient-to-r from-gray-50 to-gray-100">
-              {getColumns().map((column, idx) => (
-                <th key={idx} className="border border-gray-200 px-4 py-4 text-left text-sm font-semibold text-gray-700 bg-gray-50">
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.records.slice(0, 50).map((record, index) => renderRow(record, index))}
-          </tbody>
-        </table>
-        {data.records.length > 50 && (
-          <div className="p-4 bg-gray-50 border-t text-center text-sm text-gray-600">
-            Showing first 50 of {data.records.length} records. Export for complete data.
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-6">
-      {getSummaryCards()}
-      {getReportTable()}
-    </div>
-  )
-}
-
-// Enhanced helper functions for export
-function generatePrintableHTML(data: ReportData, filters: ReportFilters): string {
-  const currentDate = new Date().toLocaleDateString('en-PH', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-
-  const reportTitle = reportTypes.find(rt => rt.value === filters.reportType)?.label || 'Report'
-
   return `
     <!DOCTYPE html>
     <html>
     <head>
-      <title>${reportTitle} - ${currentDate}</title>
-      <meta charset="utf-8">
+      <title>${reportTitle}</title>
       <style>
-        @page { margin: 1in; }
-        body { 
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-          margin: 0; 
-          color: #333;
-          line-height: 1.4;
-        }
-        .header { 
-          text-align: center; 
-          margin-bottom: 40px; 
-          border-bottom: 3px solid #2563eb; 
-          padding-bottom: 20px; 
-        }
-        .company-name { 
-          font-size: 28px; 
-          font-weight: bold; 
-          color: #1e40af;
-          margin-bottom: 8px; 
-        }
-        .report-title { 
-          font-size: 20px; 
-          color: #4b5563; 
-          margin-bottom: 12px;
-          font-weight: 600;
-        }
-        .report-subtitle { 
-          font-size: 14px; 
-          color: #6b7280;
-          margin-bottom: 8px;
-        }
-        .report-date { 
-          font-size: 12px; 
-          color: #9ca3af; 
-        }
-        .summary { 
-          margin: 30px 0; 
-          padding: 20px; 
-          background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); 
-          border-radius: 8px;
-          border: 1px solid #cbd5e1;
-        }
-        .summary-grid { 
-          display: grid; 
-          grid-template-columns: repeat(4, 1fr); 
-          gap: 20px; 
-          text-align: center; 
-        }
-        .summary-item { 
-          padding: 15px; 
-          background: white; 
-          border-radius: 8px;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .summary-value { 
-          font-size: 22px; 
-          font-weight: bold; 
-          color: #1e40af; 
-          margin-bottom: 4px;
-        }
-        .summary-label { 
-          font-size: 12px; 
-          color: #64748b; 
-          font-weight: 500;
-        }
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 20px;
-          background: white;
-        }
-        th, td { 
-          border: 1px solid #d1d5db; 
-          padding: 10px 8px; 
-          text-align: left;
-          font-size: 11px;
-        }
-        th { 
-          background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); 
-          font-weight: 600;
-          color: #374151;
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+        .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; color: #1f2937; }
+        .report-title { font-size: 18px; color: #6b7280; margin-bottom: 10px; }
+        .report-date { font-size: 12px; color: #9ca3af; }
+        .summary { margin: 20px 0; padding: 15px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; text-align: center; }
+        .summary-item { padding: 15px; background: white; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .summary-value { font-size: 20px; font-weight: bold; color: #2563eb; margin-bottom: 5px; }
+        .summary-label { font-size: 12px; color: #6b7280; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #e5e7eb; padding: 12px 8px; text-align: left; }
+        th { background-color: #f9fafb; font-weight: 600; color: #374151; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
         .text-right { text-align: right; }
+        .text-center { text-align: center; }
         .font-mono { font-family: 'Courier New', monospace; }
-        .footer { 
-          margin-top: 40px; 
-          text-align: center; 
-          font-size: 10px; 
-          color: #9ca3af; 
-          border-top: 1px solid #e5e7eb; 
-          padding-top: 15px; 
-        }
+        .font-semibold { font-weight: 600; }
+        .text-green { color: #059669; }
+        .text-red { color: #dc2626; }
+        .text-blue { color: #2563eb; }
+        .text-purple { color: #7c3aed; }
+        .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 15px; }
         @media print {
           body { margin: 0; }
           .no-print { display: none; }
@@ -785,28 +1016,27 @@ function generatePrintableHTML(data: ReportData, filters: ReportFilters): string
     </head>
     <body>
       <div class="header">
-        <div class="company-name">Inventory Management System</div>
+        <div class="company-name">Warehouse Management System</div>
         <div class="report-title">${reportTitle}</div>
-        <div class="report-subtitle">${data.subtitle}</div>
         <div class="report-date">Generated on ${currentDate}</div>
       </div>
       
       <div class="summary">
         <div class="summary-grid">
           <div class="summary-item">
-            <div class="summary-value">${data.summary.totalRecords.toLocaleString()}</div>
+            <div class="summary-value">${formatNumber(data.summary.totalRecords)}</div>
             <div class="summary-label">Total Records</div>
           </div>
           <div class="summary-item">
-            <div class="summary-value">₱${data.summary.totalValue.toLocaleString()}</div>
-            <div class="summary-label">Total Value</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-value">${data.summary.totalQuantity.toLocaleString()}</div>
+            <div class="summary-value">${formatNumber(data.summary.totalQuantity)}</div>
             <div class="summary-label">Total Quantity</div>
           </div>
           <div class="summary-item">
-            <div class="summary-value">₱${data.summary.averageValue.toLocaleString()}</div>
+            <div class="summary-value">${formatCurrency(data.summary.totalValue)}</div>
+            <div class="summary-label">Total Value</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-value">${formatCurrency(data.summary.averageValue)}</div>
             <div class="summary-label">Average Value</div>
           </div>
         </div>
@@ -815,12 +1045,15 @@ function generatePrintableHTML(data: ReportData, filters: ReportFilters): string
       <table>
         <thead>
           <tr>
-            <th class="font-mono">Item Code</th>
+            <th>Item Code</th>
             <th>Description</th>
             <th>Warehouse</th>
+            <th>Supplier</th>
             <th class="text-right">Quantity</th>
-            <th class="text-right">Unit Cost</th>
+            <th class="text-right">Landed Cost</th>
             <th class="text-right">Total Value</th>
+            ${filters.reportType === 'STOCK_MOVEMENT' ? '<th>Date</th><th>Type</th>' : ''}
+            ${filters.reportType === 'COST_ANALYSIS' ? '<th>Variance %</th>' : ''}
           </tr>
         </thead>
         <tbody>
@@ -829,17 +1062,20 @@ function generatePrintableHTML(data: ReportData, filters: ReportFilters): string
               <td class="font-mono">${record.itemCode}</td>
               <td>${record.description}</td>
               <td>${record.warehouse}</td>
-              <td class="text-right">${record.quantity.toLocaleString()}</td>
-              <td class="text-right">₱${record.unitCost.toLocaleString()}</td>
-              <td class="text-right">₱${record.totalValue.toLocaleString()}</td>
+              <td>${record.supplier || '-'}</td>
+              <td class="text-right font-semibold">${formatNumber(record.quantity)}</td>
+              <td class="text-right">${formatCurrency(record.unitCost)}</td>
+              <td class="text-right font-semibold">${formatCurrency(record.totalValue)}</td>
+              ${filters.reportType === 'STOCK_MOVEMENT' ? `<td>${record.date || '-'}</td><td>${record.status || '-'}</td>` : ''}
+              ${filters.reportType === 'COST_ANALYSIS' ? `<td class="text-right">${record.notes || '-'}</td>` : ''}
             </tr>
           `).join('')}
         </tbody>
       </table>
 
       <div class="footer">
-        <p><strong>Report Details:</strong> ${data.title} | Records: ${data.summary.totalRecords.toLocaleString()} | Generated: ${currentDate}</p>
-        <p>© ${new Date().getFullYear()} Inventory Management System. This report contains confidential business information.</p>
+        <p>This report was generated by the Warehouse Management System on ${currentDate}</p>
+        <p>© ${new Date().getFullYear()} Your Company Name. All rights reserved.</p>
       </div>
     </body>
     </html>
@@ -847,22 +1083,21 @@ function generatePrintableHTML(data: ReportData, filters: ReportFilters): string
 }
 
 function generateCSVContent(data: ReportData): string {
-  const headers = ['Item Code', 'Description', 'Warehouse', 'Supplier', 'Quantity', 'Unit Cost', 'Total Value', 'Date', 'Reference', 'Notes']
+  const headers = ['Item Code', 'Description', 'Warehouse', 'Supplier', 'Quantity', 'Landed Cost', 'Total Value', 'Date', 'Status', 'Reference', 'Notes']
   const csvRows = [
-    `"${data.title} - Generated ${new Date().toLocaleString()}"`,
-    '',
     headers.join(','),
     ...data.records.map(record => [
       `"${record.itemCode}"`,
-      `"${record.description.replace(/"/g, '""')}"`,
+      `"${record.description}"`,
       `"${record.warehouse}"`,
-      `"${record.supplier || 'N/A'}"`,
+      `"${record.supplier || ''}"`,
       record.quantity,
       record.unitCost,
       record.totalValue,
       `"${record.date || ''}"`,
+      `"${record.status || ''}"`,
       `"${record.reference || ''}"`,
-      `"${record.notes || ''}"`
+      `"${record.notes || ''}"`,
     ].join(','))
   ]
   
