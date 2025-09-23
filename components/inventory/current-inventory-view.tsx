@@ -19,6 +19,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+    category: {
+      id: string
+      name: string
+      code: string | null
+    } | null
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { getCurrentInventory, type CurrentInventoryItem, type InventoryStats, type InventoryFilters } from "@/lib/actions/inventory-actions"
@@ -312,6 +317,7 @@ export function CurrentInventoryView({
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Item Details</th>
+                    <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                     <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">UOM</th>
                     <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
                     <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
@@ -334,6 +340,20 @@ export function CurrentInventoryView({
                             <div className="text-sm font-semibold text-gray-900">{item.item.itemCode}</div>
                             <div className="text-sm text-gray-600">{item.item.description}</div>
                           </div>
+                        </td>
+                        <td className="py-4 px-6 whitespace-nowrap">
+                          {item.item.category ? (
+                            <div className="flex items-center space-x-2">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">{item.item.category.name}</div>
+                                {item.item.category.code && (
+                                  <div className="text-xs text-gray-500">{item.item.category.code}</div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
                         <td className="py-4 px-6 whitespace-nowrap">
                           <div className="text-sm text-gray-900">{item.item.unitOfMeasure}</div>

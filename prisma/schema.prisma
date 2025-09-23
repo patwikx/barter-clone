@@ -72,6 +72,8 @@ model User {
   accounts             Account[]
   sessions             Session[]
   itemEntriesCreated   ItemEntry[]           @relation("ItemEntryCreatedBy")
+  purchasesCreated     Purchase[]            @relation("PurchaseCreatedBy")
+  purchasesApproved    Purchase[]            @relation("PurchaseApprovedBy")
   transfersCreated     Transfer[]            @relation("TransferCreatedBy")
   withdrawalsCreated   Withdrawal[]          @relation("WithdrawalCreatedBy")
   inventoryAdjustments InventoryAdjustment[]
@@ -133,6 +135,7 @@ model Item {
 
   // Inventory tracking
   itemEntries        ItemEntry[]
+  purchaseItems      PurchaseItem[] // Traditional purchase items
   inventoryMovements InventoryMovement[]
   withdrawalItems    WithdrawalItem[]
   transferItems      TransferItem[]
@@ -149,6 +152,50 @@ model Item {
   @@map("items")
 }
 
+// Traditional Purchase Order System (if you want to keep both)
+model Purchase {
+  id            String        @id @default(uuid())
+  purchaseOrder String        @unique
+  purchaseDate  DateTime      @default(now())
+  status        PurchaseStatus @default(PENDING)
+  totalCost     Decimal       @db.Decimal(12, 2)
+  notes         String?
+  approvedAt    DateTime?
+
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  supplierId String
+
+  createdBy   User   @relation("PurchaseCreatedBy", fields: [createdById], references: [id])
+  createdById String
+
+  approvedBy   User?   @relation("PurchaseApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
+
+  purchaseItems PurchaseItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id        String  @id @default(uuid())
+  quantity  Decimal @db.Decimal(10, 4)
+  unitCost  Decimal @db.Decimal(10, 6)
+  totalCost Decimal @db.Decimal(12, 2)
+
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  purchaseId String
+
+  item   Item   @relation(fields: [itemId], references: [id])
+  itemId String
+
+  createdAt DateTime @default(now())
+
+  @@map("purchase_items")
+}
+
 model Supplier {
   id                String  @id @default(uuid())
   name              String
@@ -157,6 +204,7 @@ model Supplier {
 
   items       Item[]
   itemEntries ItemEntry[] // REPLACED purchases with direct entries
+  purchases   Purchase[]  // Traditional purchase orders
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -602,6 +650,7 @@ enum WithdrawalStatus {
 
 enum MovementType {
   ITEM_ENTRY // RENAMED from PURCHASE_RECEIPT
+  PURCHASE_RECEIPT // Keep for traditional purchase orders
   TRANSFER_IN
   TRANSFER_OUT
   WITHDRAWAL
@@ -610,6 +659,13 @@ enum MovementType {
   REVALUATION
 }
 
+// Add Purchase Status enum
+enum PurchaseStatus {
+  PENDING
+  RECEIVED
+  PARTIALLY_RECEIVED
+  CANCELLED
+}
 enum CostingMethodType {
   FIFO
   LIFO
@@ -680,6 +736,12 @@ enum Permission {
   // Item Entry (Direct Purchase)
   CREATE_ITEM_ENTRIES
   VIEW_ITEM_ENTRIES
+
+  // Traditional Purchase Management
+  CREATE_PURCHASES
+  APPROVE_PURCHASES
+  VIEW_PURCHASES
+  CANCEL_PURCHASES
 
   // Transfer Management
   CREATE_TRANSFERS

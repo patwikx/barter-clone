@@ -18,6 +18,11 @@ export interface CurrentInventoryItem {
     unitOfMeasure: string
     standardCost: number
     reorderLevel: number | null
+    category: {
+      id: string
+      name: string
+      code: string | null
+    } | null
     supplier: {
       id: string
       name: string
@@ -106,6 +111,13 @@ interface InventoryMovementWhereInput {
 const currentInventoryInclude = {
   item: {
     include: {
+      category: {
+        select: {
+          id: true,
+          name: true,
+          code: true
+        }
+      },
       supplier: {
         select: {
           id: true,
@@ -166,6 +178,7 @@ function transformCurrentInventoryItem(item: RawCurrentInventory): CurrentInvent
       unitOfMeasure: item.item.unitOfMeasure,
       standardCost: Number(item.item.standardCost),
       reorderLevel: item.item.reorderLevel ? Number(item.item.reorderLevel) : null,
+      category: item.item.category,
       supplier: {
         id: item.item.supplier.id,
         name: item.item.supplier.name

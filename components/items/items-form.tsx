@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DialogFooter } from "@/components/ui/dialog"
 import { CostingMethodType } from "@prisma/client"
 import { type CreateItemInput, type UpdateItemInput, type ItemWithDetails } from "@/lib/actions/item-actions"
+import { getCategoriesForSelection } from "@/lib/actions/category-actions"
 
 interface ItemFormData {
   itemCode: string
@@ -21,6 +22,7 @@ interface ItemFormData {
   maxLevel: string
   minLevel: string
   supplierId: string
+  categoryId: string
 }
 
 interface ItemFormProps {
@@ -32,6 +34,14 @@ interface ItemFormProps {
 }
 
 export function ItemForm({ item, suppliers, onSubmit, onCancel, isLoading }: ItemFormProps) {
+  const [categories, setCategories] = useState<Array<{
+    id: string
+    name: string
+    code: string | null
+    parentCategory: { name: string } | null
+  }>>([])
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
+
   const [formData, setFormData] = useState<ItemFormData>({
     itemCode: item?.itemCode || "",
     description: item?.description || "",
@@ -42,7 +52,26 @@ export function ItemForm({ item, suppliers, onSubmit, onCancel, isLoading }: Ite
     maxLevel: item?.maxLevel?.toString() || "",
     minLevel: item?.minLevel?.toString() || "",
     supplierId: item?.supplier.id || "",
+    categoryId: item?.category?.id || "",
   })
+
+  // Load categories on component mount
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const result = await getCategoriesForSelection()
+        if (result.success && result.data) {
+          setCategories(result.data)
+        }
+      } catch (error) {
+        console.error('Error loading categories:', error)
+      } finally {
+        setIsLoadingCategories(false)
+      }
+    }
+
+    loadCategories()
+  }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,6 +94,7 @@ export function ItemForm({ item, suppliers, onSubmit, onCancel, isLoading }: Ite
       if (maxLevel !== item.maxLevel) updateData.maxLevel = maxLevel
       if (minLevel !== item.minLevel) updateData.minLevel = minLevel
       if (formData.supplierId !== item.supplier.id) updateData.supplierId = formData.supplierId
+      if (formData.categoryId !== (item.category?.id || "")) updateData.categoryId = formData.categoryId || undefined
 
       onSubmit(updateData)
     } else {
@@ -79,6 +109,7 @@ export function ItemForm({ item, suppliers, onSubmit, onCancel, isLoading }: Ite
         maxLevel,
         minLevel,
         supplierId: formData.supplierId,
+        categoryId: formData.categoryId || undefined,
       }
       
       onSubmit(createData)
@@ -161,6 +192,39 @@ export function ItemForm({ item, suppliers, onSubmit, onCancel, isLoading }: Ite
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="categoryId">Category</Label>
+        <Select
+          value={formData.categoryId}
+          onValueChange={(value) => setFormData(prev => ({ ...prev, categoryId: value }))}
+          disabled={isLoading || isLoadingCategories}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select category" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">No Category</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={category.id}>
+                <div className="flex items-center">
+                  {category.code && (
+                    <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded mr-2">
+                      {category.code}
+                    </span>
+                  )}
+                  <span>{category.name}</span>
+                  {category.parentCategory && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      ({category.parentCategory.name})
+                    </span>
+                  )}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">

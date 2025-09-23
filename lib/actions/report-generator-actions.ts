@@ -59,6 +59,9 @@ export async function generateReport(filters: ReportFilters): Promise<{
       case 'SUPPLIER_PERFORMANCE':
         reportData = await generateSupplierPerformanceReport(filters)
         break
+      case 'CATEGORY_ANALYSIS':
+        reportData = await generateCategoryAnalysisReport(filters)
+        break
       default:
         return { success: false, error: "Invalid report type" }
     }
@@ -74,7 +77,7 @@ export async function generateReport(filters: ReportFilters): Promise<{
 async function generateInventorySummaryReport(filters: ReportFilters): Promise<ReportData> {
   const whereClause: {
     warehouseId?: string
-    item?: { supplierId?: string }
+    item?: { supplierId?: string; categoryId?: string }
     quantity?: { gt?: number }
   } = {}
 
@@ -83,7 +86,10 @@ async function generateInventorySummaryReport(filters: ReportFilters): Promise<R
   }
 
   if (filters.supplierId !== 'all') {
-    whereClause.item = { supplierId: filters.supplierId }
+    whereClause.item = { 
+      supplierId: filters.supplierId,
+      ...(whereClause.item || {})
+    }
   }
 
   if (!filters.includeZeroStock) {
@@ -95,6 +101,12 @@ async function generateInventorySummaryReport(filters: ReportFilters): Promise<R
     include: {
       item: {
         include: {
+          category: {
+            select: {
+              name: true,
+              code: true
+            }
+          },
           supplier: { select: { name: true } }
         }
       },
@@ -122,6 +134,8 @@ async function generateInventorySummaryReport(filters: ReportFilters): Promise<R
       description: inv.item.description,
       warehouse: inv.warehouse.name,
       supplier: inv.item.supplier.name,
+      category: inv.item.category?.name || 'Uncategorized',
+      categoryCode: inv.item.category?.code || null,
       unitOfMeasure: inv.item.unitOfMeasure,
       quantity,
       unitCost: Number(inv.avgUnitCost),
@@ -157,7 +171,7 @@ async function generateInventorySummaryReport(filters: ReportFilters): Promise<R
 async function generateInventoryValuationReport(filters: ReportFilters): Promise<ReportData> {
   const whereClause: {
     warehouseId?: string
-    item?: { supplierId?: string }
+    item?: { supplierId?: string; categoryId?: string }
   } = {}
 
   if (filters.warehouseId !== 'all') {
@@ -165,7 +179,10 @@ async function generateInventoryValuationReport(filters: ReportFilters): Promise
   }
 
   if (filters.supplierId !== 'all') {
-    whereClause.item = { supplierId: filters.supplierId }
+    whereClause.item = { 
+      supplierId: filters.supplierId,
+      ...(whereClause.item || {})
+    }
   }
 
   const inventory = await prisma.currentInventory.findMany({
@@ -173,6 +190,12 @@ async function generateInventoryValuationReport(filters: ReportFilters): Promise
     include: {
       item: {
         include: {
+          category: {
+            select: {
+              name: true,
+              code: true
+            }
+          },
           supplier: { select: { name: true } }
         }
       },
@@ -197,6 +220,8 @@ async function generateInventoryValuationReport(filters: ReportFilters): Promise
       description: inv.item.description,
       warehouse: inv.warehouse.name,
       supplier: inv.item.supplier.name,
+      category: inv.item.category?.name || 'Uncategorized',
+      categoryCode: inv.item.category?.code || null,
       unitOfMeasure: inv.item.unitOfMeasure,
       quantity,
       unitCost: Number(inv.avgUnitCost),
@@ -230,7 +255,7 @@ async function generateInventoryValuationReport(filters: ReportFilters): Promise
 async function generateLowStockReport(filters: ReportFilters): Promise<ReportData> {
   const whereClause: {
     warehouseId?: string
-    item?: { supplierId?: string; reorderLevel: { not: null } }
+    item?: { supplierId?: string; categoryId?: string; reorderLevel: { not: null } }
   } = {
     item: { reorderLevel: { not: null } }
   }
@@ -242,7 +267,8 @@ async function generateLowStockReport(filters: ReportFilters): Promise<ReportDat
   if (filters.supplierId !== 'all') {
     whereClause.item = {
       reorderLevel: { not: null },
-      supplierId: filters.supplierId
+      supplierId: filters.supplierId,
+      ...(whereClause.item || {})
     }
   }
 
@@ -251,6 +277,12 @@ async function generateLowStockReport(filters: ReportFilters): Promise<ReportDat
     include: {
       item: {
         include: {
+          category: {
+            select: {
+              name: true,
+              code: true
+            }
+          },
           supplier: { select: { name: true } }
         }
       },
@@ -267,6 +299,8 @@ async function generateLowStockReport(filters: ReportFilters): Promise<ReportDat
     description: inv.item.description,
     warehouse: inv.warehouse.name,
     supplier: inv.item.supplier.name,
+    category: inv.item.category?.name || 'Uncategorized',
+    categoryCode: inv.item.category?.code || null,
     unitOfMeasure: inv.item.unitOfMeasure,
     quantity: Number(inv.quantity),
     unitCost: Number(inv.avgUnitCost),
@@ -755,6 +789,114 @@ async function generateSupplierPerformanceReport(filters: ReportFilters): Promis
   return {
     title: 'Supplier Performance Report',
     subtitle: 'Supplier delivery and cost performance analysis',
+    generatedAt: new Date(),
+    filters,
+    summary,
+    records
+  }
+}
+
+async function generateCategoryAnalysisReport(filters: ReportFilters): Promise<ReportData> {
+  const whereClause: {
+    warehouseId?: string
+    item?: { categoryId?: string }
+  } = {}
+
+  if (filters.warehouseId !== 'all') {
+    whereClause.warehouseId = filters.warehouseId
+  }
+
+  if (filters.categoryId !== 'all') {
+    whereClause.item = { categoryId: filters.categoryId }
+  }
+
+  const inventory = await prisma.currentInventory.findMany({
+    where: whereClause,
+    include: {
+      item: {
+        include: {
+          category: {
+            select: {
+              name: true,
+              code: true
+            }
+          },
+          supplier: { select: { name: true } }
+        }
+      },
+      warehouse: { select: { name: true } }
+    }
+  })
+
+  // Group by category
+  const categoryGroups = inventory.reduce((groups, inv) => {
+    const categoryName = inv.item.category?.name || 'Uncategorized'
+    if (!groups[categoryName]) {
+      groups[categoryName] = []
+    }
+    groups[categoryName].push(inv)
+    return groups
+  }, {} as Record<string, typeof inventory>)
+
+  const records: Array<{
+    category: string
+    categoryCode: string | null
+    itemCount: number
+    totalQuantity: number
+    totalValue: number
+    averageValue: number
+    lowStockItems: number
+    outOfStockItems: number
+    topItem: string
+    topItemValue: number
+  }> = []
+
+  Object.entries(categoryGroups).forEach(([categoryName, items]) => {
+    const totalQuantity = items.reduce((sum, item) => sum + Number(item.quantity), 0)
+    const totalValue = items.reduce((sum, item) => sum + Number(item.totalValue), 0)
+    const averageValue = items.length > 0 ? totalValue / items.length : 0
+    
+    const lowStockItems = items.filter(item => 
+      item.item.reorderLevel && Number(item.quantity) <= Number(item.item.reorderLevel)
+    ).length
+    
+    const outOfStockItems = items.filter(item => Number(item.quantity) === 0).length
+    
+    // Find top item by value
+    const topItem = items.reduce((max, item) => 
+      Number(item.totalValue) > Number(max.totalValue) ? item : max
+    )
+    
+    const categoryCode = items[0]?.item.category?.code || null
+
+    records.push({
+      category: categoryName,
+      categoryCode,
+      itemCount: items.length,
+      totalQuantity,
+      totalValue,
+      averageValue,
+      lowStockItems,
+      outOfStockItems,
+      topItem: topItem.item.itemCode,
+      topItemValue: Number(topItem.totalValue)
+    })
+  })
+
+  const summary: ReportSummary = {
+    totalRecords: records.length,
+    totalQuantity: records.reduce((sum, r) => sum + r.totalQuantity, 0),
+    totalValue: records.reduce((sum, r) => sum + r.totalValue, 0),
+    averageValue: records.length > 0 ? records.reduce((sum, r) => sum + r.totalValue, 0) / records.length : 0,
+    additionalMetrics: {
+      lowStockCount: records.reduce((sum, r) => sum + r.lowStockItems, 0),
+      outOfStockCount: records.reduce((sum, r) => sum + r.outOfStockItems, 0)
+    }
+  }
+
+  return {
+    title: 'Category Analysis Report',
+    subtitle: 'Inventory analysis by item categories',
     generatedAt: new Date(),
     filters,
     summary,

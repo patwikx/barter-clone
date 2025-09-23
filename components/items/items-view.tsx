@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   TrendingUp,
   Building,
+  Tag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,6 +36,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { getItems, createItem, updateItem, deleteItem, type ItemWithDetails, type CreateItemInput, type UpdateItemInput, type ItemFilters } from "@/lib/actions/item-actions"
+import { getCategoriesForSelection } from "@/lib/actions/category-actions"
 import { CostingMethodType } from "@prisma/client"
 import { ItemForm } from "./items-form"
 import { toast } from "sonner"
@@ -46,21 +48,44 @@ interface ItemsViewProps {
 
 export function ItemsView({ initialItems, suppliers }: ItemsViewProps) {
   const [items, setItems] = useState<ItemWithDetails[]>(initialItems)
+  const [categories, setCategories] = useState<Array<{
+    id: string
+    name: string
+    code: string | null
+    parentCategory: { name: string } | null
+  }>>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedSupplier, setSelectedSupplier] = useState("all")
   const [selectedCostingMethod, setSelectedCostingMethod] = useState("all")
+  const [selectedCategory, setSelectedCategory] = useState("all")
   const [selectedItem, setSelectedItem] = useState<ItemWithDetails | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
+  // Load categories on component mount
+  React.useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const result = await getCategoriesForSelection()
+        if (result.success && result.data) {
+          setCategories(result.data)
+        }
+      } catch (error) {
+        console.error('Error loading categories:', error)
+      }
+    }
+
+    loadCategories()
+  }, [])
   const handleRefresh = () => {
     startTransition(async () => {
       const filters: Partial<ItemFilters> = {
         search: searchQuery,
         supplierId: selectedSupplier,
-        costingMethod: selectedCostingMethod
+        costingMethod: selectedCostingMethod,
+        categoryId: selectedCategory
       }
 
       const result = await getItems(filters)
@@ -83,6 +108,7 @@ export function ItemsView({ initialItems, suppliers }: ItemsViewProps) {
     setSearchQuery("")
     setSelectedSupplier("all")
     setSelectedCostingMethod("all")
+    setSelectedCategory("all")
     
     startTransition(async () => {
       const result = await getItems()
@@ -246,6 +272,27 @@ export function ItemsView({ initialItems, suppliers }: ItemsViewProps) {
                     ))}
                   </SelectContent>
                 </Select>
+                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                  <SelectTrigger className="h-9 w-48">
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        <div className="flex items-center">
+                          <Tag className="w-4 h-4 mr-2" />
+                          {category.code && (
+                            <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded mr-2">
+                              {category.code}
+                            </span>
+                          )}
+                          {category.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button variant="outline" onClick={clearFilters} size="sm" className="h-9">
                   Clear
                 </Button>
@@ -272,6 +319,7 @@ export function ItemsView({ initialItems, suppliers }: ItemsViewProps) {
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                    <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                     <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier</th>
                     <th className="text-left py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Costing Method</th>
                     <th className="text-right py-3 px-6 text-xs font-medium text-gray-500 uppercase tracking-wider">Standard Cost</th>
@@ -294,6 +342,21 @@ export function ItemsView({ initialItems, suppliers }: ItemsViewProps) {
                             UOM: {item.unitOfMeasure}
                           </div>
                         </div>
+                      </td>
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        {item.category ? (
+                          <div className="flex items-center space-x-2">
+                            <Tag className="w-4 h-4 text-gray-400" />
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{item.category.name}</div>
+                              {item.category.code && (
+                                <div className="text-xs text-gray-500">{item.category.code}</div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </td>
                       <td className="py-4 px-6 whitespace-nowrap">
                         <div className="flex items-center space-x-2">

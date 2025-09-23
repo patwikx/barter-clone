@@ -11,11 +11,13 @@ export type ReportType =
   | 'COST_ANALYSIS'
   | 'MONTHLY_WEIGHTED_AVERAGE'
   | 'SUPPLIER_PERFORMANCE'
+  | 'CATEGORY_ANALYSIS'
 
 export interface ReportFilters {
   reportType: ReportType
   warehouseId: string
   supplierId: string
+  categoryId: string
   dateFrom: string
   dateTo: string
   includeZeroStock: boolean
@@ -33,6 +35,8 @@ export interface BaseReportRecord {
 
 export interface InventoryReportRecord extends BaseReportRecord {
   supplier: string
+  category: string
+  categoryCode: string | null
   unitOfMeasure: string
   reorderLevel?: number
   standardCost: number

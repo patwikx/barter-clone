@@ -15,6 +15,8 @@ import { Switch } from "@/components/ui/switch"
 import { generateReport } from "@/lib/actions/report-generator-actions"
 import { ReportFilters, ReportType, ReportData } from "@/types/report-types"
 import { toast } from "sonner"
+import { getCategoriesForSelection } from "@/lib/actions/category-actions"
+import { useState, useEffect } from "react"
 
 interface ReportGeneratorProps {
   warehouses: Array<{ id: string; name: string; location: string | null }>
@@ -32,6 +34,7 @@ const REPORT_TYPES: Array<{ value: ReportType; label: string; description: strin
   { value: 'COST_ANALYSIS', label: 'Cost Analysis', description: 'Cost variance analysis' },
   { value: 'MONTHLY_WEIGHTED_AVERAGE', label: 'Monthly Averages', description: 'Monthly weighted average costs' },
   { value: 'SUPPLIER_PERFORMANCE', label: 'Supplier Performance', description: 'Supplier delivery and cost analysis' },
+  { value: 'CATEGORY_ANALYSIS', label: 'Category Analysis', description: 'Inventory analysis by categories' },
 ]
 
 export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps) {
@@ -39,12 +42,34 @@ export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps)
     reportType: 'INVENTORY_SUMMARY',
     warehouseId: 'all',
     supplierId: 'all',
+    categoryId: 'all',
     dateFrom: '',
     dateTo: '',
     includeZeroStock: false,
   })
   const [isPending, startTransition] = useTransition()
+  const [categories, setCategories] = useState<Array<{
+    id: string
+    name: string
+    code: string | null
+    parentCategory: { name: string } | null
+  }>>([])
 
+  // Load categories on component mount
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const result = await getCategoriesForSelection()
+        if (result.success && result.data) {
+          setCategories(result.data)
+        }
+      } catch (error) {
+        console.error('Error loading categories:', error)
+      }
+    }
+
+    loadCategories()
+  }, [])
   const handleGenerateReport = () => {
     startTransition(async () => {
       const result = await generateReport(filters)
@@ -139,7 +164,7 @@ export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps)
           </div>
 
           {/* Filters Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="space-y-2">
               <Label className="text-sm font-medium">Warehouse</Label>
               <Select
@@ -180,6 +205,32 @@ export function ReportGenerator({ warehouses, suppliers }: ReportGeneratorProps)
               </Select>
             </div>
 
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Category</Label>
+              <Select
+                value={filters.categoryId}
+                onValueChange={(value) => setFilters(prev => ({ ...prev, categoryId: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      <div className="flex items-center">
+                        {category.code && (
+                          <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded mr-2">
+                            {category.code}
+                          </span>
+                        )}
+                        {category.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label className="text-sm font-medium">Date From</Label>
               <Input

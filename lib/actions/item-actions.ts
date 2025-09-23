@@ -17,6 +17,11 @@ export interface ItemWithDetails {
   minLevel: number | null
   createdAt: Date
   updatedAt: Date
+  category: {
+    id: string
+    name: string
+    code: string | null
+  } | null
   supplier: {
     id: string
     name: string
@@ -38,6 +43,7 @@ export interface CreateItemInput {
   maxLevel?: number
   minLevel?: number
   supplierId: string
+  categoryId?: string
 }
 
 export interface UpdateItemInput {
@@ -50,16 +56,25 @@ export interface UpdateItemInput {
   maxLevel?: number
   minLevel?: number
   supplierId?: string
+  categoryId?: string
 }
 
 export interface ItemFilters {
   search: string
   supplierId: string
   costingMethod: string
+  categoryId: string
 }
 
 // Include type for item queries - updated to use itemEntries
 const itemInclude = {
+  category: {
+    select: {
+      id: true,
+      name: true,
+      code: true
+    }
+  },
   supplier: {
     select: {
       id: true,
@@ -89,6 +104,7 @@ interface ItemWhereInput {
   }>
   supplierId?: string
   costingMethod?: CostingMethodType
+  categoryId?: string
 }
 
 // Get all items with filters
@@ -105,7 +121,7 @@ export async function getItems(
       return { success: false, error: "Unauthorized" }
     }
 
-    const { search = "", supplierId = "all", costingMethod = "all" } = filters
+    const { search = "", supplierId = "all", costingMethod = "all", categoryId = "all" } = filters
 
     // Build where clause
     const where: ItemWhereInput = {}
@@ -138,6 +154,11 @@ export async function getItems(
       where.costingMethod = costingMethod as CostingMethodType
     }
 
+    // Category filter
+    if (categoryId && categoryId !== 'all') {
+      where.categoryId = categoryId
+    }
+
     const items = await prisma.item.findMany({
       where,
       include: itemInclude,
@@ -158,6 +179,7 @@ export async function getItems(
       minLevel: item.minLevel ? Number(item.minLevel) : null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      category: item.category,
       supplier: item.supplier,
       _count: item._count
     }))
@@ -209,6 +231,7 @@ export async function getItemById(itemId: string): Promise<{
       minLevel: item.minLevel ? Number(item.minLevel) : null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      category: item.category,
       supplier: item.supplier,
       _count: item._count
     }
@@ -263,7 +286,8 @@ export async function createItem(data: CreateItemInput): Promise<{
         reorderLevel: data.reorderLevel,
         maxLevel: data.maxLevel,
         minLevel: data.minLevel,
-        supplierId: data.supplierId
+        supplierId: data.supplierId,
+        categoryId: data.categoryId
       },
       include: itemInclude
     })
@@ -280,6 +304,7 @@ export async function createItem(data: CreateItemInput): Promise<{
       minLevel: item.minLevel ? Number(item.minLevel) : null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      category: item.category,
       supplier: item.supplier,
       _count: item._count
     }
@@ -339,6 +364,7 @@ export async function updateItem(itemId: string, data: UpdateItemInput): Promise
       maxLevel?: number | null
       minLevel?: number | null
       supplierId?: string
+      categoryId?: string
       updatedAt: Date
     } = {
       updatedAt: new Date()
@@ -353,6 +379,7 @@ export async function updateItem(itemId: string, data: UpdateItemInput): Promise
     if (data.maxLevel !== undefined) updateData.maxLevel = data.maxLevel
     if (data.minLevel !== undefined) updateData.minLevel = data.minLevel
     if (data.supplierId !== undefined) updateData.supplierId = data.supplierId
+    if (data.categoryId !== undefined) updateData.categoryId = data.categoryId
 
     const item = await prisma.item.update({
       where: { id: itemId },
@@ -372,6 +399,7 @@ export async function updateItem(itemId: string, data: UpdateItemInput): Promise
       minLevel: item.minLevel ? Number(item.minLevel) : null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
+      category: item.category,
       supplier: item.supplier,
       _count: item._count
     }

@@ -17,6 +17,7 @@ import {
   IconHistory,
   IconMinus,
   IconPlus,
+  IconShoppingCart,
 } from "@tabler/icons-react"
 
 import {
@@ -224,6 +225,23 @@ export function AppSidebar({
       })
     }
 
+    // Traditional Purchase Orders (if you want to keep both systems)
+    if (hasPermission(PERMISSIONS.CREATE_PURCHASES) || hasPermission(PERMISSIONS.VIEW_PURCHASES)) {
+      const subItems: Array<{ title: string; url: string }> = [
+        { title: "All Purchase Orders", url: "/dashboard/purchases" }
+      ]
+      
+      if (hasPermission(PERMISSIONS.CREATE_PURCHASES)) {
+        subItems.push({ title: "Create Purchase Order", url: "/dashboard/purchases/create" })
+      }
+
+      items.push({
+        title: "Purchase Orders",
+        url: "/dashboard/purchases",
+        icon: IconShoppingCart,
+        items: subItems
+      })
+    }
     if (hasPermission(PERMISSIONS.VIEW_TRANSFERS) || hasPermission(PERMISSIONS.CREATE_TRANSFERS)) {
       const subItems: Array<{ title: string; url: string }> = [
         { title: "All Transfers", url: "/dashboard/transfers" }
@@ -273,6 +291,12 @@ export function AppSidebar({
       items.push({
         name: "Items & Catalog",
         url: "/dashboard/items",
+        icon: IconClipboardList,
+      })
+      
+      items.push({
+        name: "Item Categories",
+        url: "/dashboard/categories",
         icon: IconClipboardList,
       })
     }

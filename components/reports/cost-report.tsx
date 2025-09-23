@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input"
 import { generateReport } from "@/lib/actions/report-generator-actions"
 import { ReportFilters, ReportData } from "@/types/report-types"
 import { toast } from "sonner"
+import { getCategoriesForSelection } from "@/lib/actions/category-actions"
+import { useState, useEffect } from "react"
 
 interface CostReportsProps {
   warehouses: Array<{ id: string; name: string; location: string | null }>
@@ -26,21 +28,45 @@ const COST_REPORT_TYPES = [
   { value: 'COST_ANALYSIS', label: 'Cost Variance Analysis', icon: Calculator },
   { value: 'MONTHLY_WEIGHTED_AVERAGE', label: 'Monthly Averages', icon: TrendingUp },
   { value: 'SUPPLIER_PERFORMANCE', label: 'Supplier Performance', icon: PieChart },
+  { value: 'CATEGORY_COST_ANALYSIS', label: 'Category Cost Analysis', icon: Calculator },
 ]
 
 export function CostReports({ warehouses, suppliers }: CostReportsProps) {
   const [warehouseId, setWarehouseId] = useState('all')
   const [supplierId, setSupplierId] = useState('all')
+  const [categoryId, setCategoryId] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [isPending, startTransition] = useTransition()
+  const [categories, setCategories] = useState<Array<{
+    id: string
+    name: string
+    code: string | null
+    parentCategory: { name: string } | null
+  }>>([])
 
+  // Load categories on component mount
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const result = await getCategoriesForSelection()
+        if (result.success && result.data) {
+          setCategories(result.data)
+        }
+      } catch (error) {
+        console.error('Error loading categories:', error)
+      }
+    }
+
+    loadCategories()
+  }, [])
   const handleGenerateReport = (reportType: string) => {
     startTransition(async () => {
       const filters: ReportFilters = {
         reportType: reportType as ReportFilters['reportType'],
         warehouseId,
         supplierId,
+        categoryId,
         dateFrom,
         dateTo,
         includeZeroStock: false,
@@ -110,7 +136,7 @@ export function CostReports({ warehouses, suppliers }: CostReportsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="space-y-2">
               <Label className="text-sm font-medium">Warehouse</Label>
               <Select value={warehouseId} onValueChange={setWarehouseId}>
@@ -145,6 +171,29 @@ export function CostReports({ warehouses, suppliers }: CostReportsProps) {
               </Select>
             </div>
 
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Category</Label>
+              <Select value={categoryId} onValueChange={setCategoryId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      <div className="flex items-center">
+                        {category.code && (
+                          <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded mr-2">
+                            {category.code}
+                          </span>
+                        )}
+                        {category.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label className="text-sm font-medium">Date From</Label>
               <Input
@@ -188,6 +237,7 @@ export function CostReports({ warehouses, suppliers }: CostReportsProps) {
                   {reportType.value === 'COST_ANALYSIS' && 'Standard vs actual cost variance analysis'}
                   {reportType.value === 'MONTHLY_WEIGHTED_AVERAGE' && 'Monthly cost calculations and trends'}
                   {reportType.value === 'SUPPLIER_PERFORMANCE' && 'Supplier delivery and cost performance'}
+                  {reportType.value === 'CATEGORY_COST_ANALYSIS' && 'Cost analysis grouped by item categories'}
                 </p>
                 
                 <Button 

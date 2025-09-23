@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useTransition } from "react"
+import React, { useState, useTransition, useEffect } from "react"
 import {
   Package,
   AlertTriangle,
@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { generateReport } from "@/lib/actions/report-generator-actions"
 import { ReportFilters, ReportData } from "@/types/report-types"
 import { toast } from "sonner"
+import { getCategoriesForSelection } from "@/lib/actions/category-actions"
 
 interface InventoryReportsProps {
   warehouses: Array<{ id: string; name: string; location: string | null }>
@@ -26,13 +27,37 @@ const INVENTORY_REPORT_TYPES = [
   { value: 'INVENTORY_SUMMARY', label: 'Current Stock Summary', icon: Package },
   { value: 'INVENTORY_VALUATION', label: 'Inventory Valuation', icon: DollarSign },
   { value: 'LOW_STOCK_REPORT', label: 'Low Stock Alert', icon: AlertTriangle },
+  { value: 'CATEGORY_ANALYSIS', label: 'Category Analysis', icon: BarChart3 },
 ]
 
 export function InventoryReports({ warehouses, suppliers }: InventoryReportsProps) {
   const [selectedReport, setSelectedReport] = useState('INVENTORY_SUMMARY')
   const [warehouseId, setWarehouseId] = useState('all')
   const [supplierId, setSupplierId] = useState('all')
+  const [categoryId, setCategoryId] = useState('all')
   const [isPending, startTransition] = useTransition()
+  const [categories, setCategories] = useState<Array<{
+    id: string
+    name: string
+    code: string | null
+    parentCategory: { name: string } | null
+  }>>([])
+
+  // Load categories on component mount
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const result = await getCategoriesForSelection()
+        if (result.success && result.data) {
+          setCategories(result.data)
+        }
+      } catch (error) {
+        console.error('Error loading categories:', error)
+      }
+    }
+
+    loadCategories()
+  }, [])
 
   const handleGenerateReport = () => {
     startTransition(async () => {
@@ -40,6 +65,7 @@ export function InventoryReports({ warehouses, suppliers }: InventoryReportsProp
         reportType: selectedReport as ReportFilters['reportType'],
         warehouseId,
         supplierId,
+        categoryId,
         dateFrom: '',
         dateTo: '',
         includeZeroStock: selectedReport === 'INVENTORY_SUMMARY',
@@ -109,7 +135,7 @@ export function InventoryReports({ warehouses, suppliers }: InventoryReportsProp
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label className="text-sm font-medium">Report Type</Label>
               <Select value={selectedReport} onValueChange={setSelectedReport}>
@@ -159,6 +185,30 @@ export function InventoryReports({ warehouses, suppliers }: InventoryReportsProp
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Category</Label>
+              <Select value={categoryId} onValueChange={setCategoryId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      <div className="flex items-center">
+                        {category.code && (
+                          <span className="text-xs bg-gray-100 px-1.5 py-0.5 rounded mr-2">
+                            {category.code}
+                          </span>
+                        )}
+                        {category.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="flex justify-center">
@@ -198,6 +248,7 @@ export function InventoryReports({ warehouses, suppliers }: InventoryReportsProp
                       {selectedReport === 'INVENTORY_SUMMARY' && 'Generate a comprehensive summary of current stock levels and values across all warehouses. Includes item codes, descriptions, quantities, unit costs, and total values.'}
                       {selectedReport === 'INVENTORY_VALUATION' && 'Detailed inventory valuation report showing different costing methods and their impact on inventory values. Perfect for financial reporting and analysis.'}
                       {selectedReport === 'LOW_STOCK_REPORT' && 'Identify items that have fallen below their reorder levels and require immediate attention. Helps prevent stockouts and maintain optimal inventory levels.'}
+                      {selectedReport === 'CATEGORY_ANALYSIS' && 'Analyze inventory distribution and performance by item categories. Shows category-wise stock levels, values, and movement patterns.'}
                     </p>
                   </div>
                 </>
