@@ -19,7 +19,7 @@ export interface ReportFilters {
   dateFrom: string
   dateTo: string
   includeZeroStock: boolean
-  costingMethod?: 'FIFO' | 'LIFO' | 'WEIGHTED_AVERAGE' | 'MOVING_AVERAGE'
+  costingMethod?: 'FIFO' | 'LIFO' | 'WEIGHTED_AVERAGE' | 'MOVING_AVERAGE' | 'STANDARD_COST' | 'SPECIFIC_IDENTIFICATION'
 }
 
 export interface BaseReportRecord {
@@ -100,6 +100,50 @@ export interface MonthlyAverageReportRecord {
   withdrawalValue: number
 }
 
+export interface OperationalReportRecord {
+  metric: string
+  value: number
+  category: string
+  period: string
+}
+
+export interface WarehouseEfficiencyRecord {
+  warehouseName: string
+  location: string
+  totalItems: number
+  totalValue: number
+  totalQuantity: number
+  totalMovements: number
+  totalEntries: number
+  totalTransfers: number
+  totalWithdrawals: number
+  efficiencyScore: number
+}
+
+export interface SupplierPerformanceRecord {
+  supplierName: string
+  contactInfo: string
+  totalItems: number
+  totalEntries: number
+  totalValue: number
+  totalQuantity: number
+  averageCost: number
+  lastEntryDate: string
+  performanceScore: number
+}
+
+export interface InventoryTurnoverRecord {
+  itemCode: string
+  description: string
+  warehouse: string
+  currentQuantity: number
+  outboundQuantity: number
+  averageInventory: number
+  turnoverRatio: number
+  daysOnHand: number
+  currentValue: number
+  standardCost: number
+}
 export type ReportRecord = 
   | InventoryReportRecord
   | MovementReportRecord
@@ -108,6 +152,10 @@ export type ReportRecord =
   | WithdrawalReportRecord
   | CostAnalysisReportRecord
   | MonthlyAverageReportRecord
+  | OperationalReportRecord
+  | WarehouseEfficiencyRecord
+  | SupplierPerformanceRecord
+  | InventoryTurnoverRecord
 
 export interface ReportSummary {
   totalRecords: number
@@ -119,6 +167,14 @@ export interface ReportSummary {
     outOfStockCount?: number
     varianceTotal?: number
     averageCost?: number
+    totalMovements?: number
+    averageEfficiency?: number
+    totalEntries?: number
+    averagePerformance?: number
+    averageTurnover?: number
+    averageDaysOnHand?: number
+    monthlyOperations?: number
+    systemUtilization?: number
   }
 }
 

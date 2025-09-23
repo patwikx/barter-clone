@@ -154,6 +154,209 @@ async function generateInventorySummaryReport(filters: ReportFilters): Promise<R
   }
 }
 
+async function generateInventoryValuationReport(filters: ReportFilters): Promise<ReportData> {
+  const whereClause: {
+    warehouseId?: string
+    item?: { supplierId?: string }
+  } = {}
+
+  if (filters.warehouseId !== 'all') {
+    whereClause.warehouseId = filters.warehouseId
+  }
+
+  if (filters.supplierId !== 'all') {
+    whereClause.item = { supplierId: filters.supplierId }
+  }
+
+  const inventory = await prisma.currentInventory.findMany({
+    where: whereClause,
+    include: {
+      item: {
+        include: {
+          supplier: { select: { name: true } }
+        }
+      },
+      warehouse: { select: { name: true } }
+    },
+    orderBy: [{ totalValue: 'desc' }]
+  })
+
+  const records: InventoryReportRecord[] = inventory.map(inv => {
+    const quantity = Number(inv.quantity)
+    const reorderLevel = inv.item.reorderLevel ? Number(inv.item.reorderLevel) : undefined
+    
+    let stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' = 'IN_STOCK'
+    if (quantity === 0) {
+      stockStatus = 'OUT_OF_STOCK'
+    } else if (reorderLevel && quantity <= reorderLevel) {
+      stockStatus = 'LOW_STOCK'
+    }
+
+    return {
+      itemCode: inv.item.itemCode,
+      description: inv.item.description,
+      warehouse: inv.warehouse.name,
+      supplier: inv.item.supplier.name,
+      unitOfMeasure: inv.item.unitOfMeasure,
+      quantity,
+      unitCost: Number(inv.avgUnitCost),
+      totalValue: Number(inv.totalValue),
+      reorderLevel,
+      standardCost: Number(inv.item.standardCost),
+      stockStatus
+    }
+  })
+
+  const summary: ReportSummary = {
+    totalRecords: records.length,
+    totalQuantity: records.reduce((sum, r) => sum + r.quantity, 0),
+    totalValue: records.reduce((sum, r) => sum + r.totalValue, 0),
+    averageValue: records.length > 0 ? records.reduce((sum, r) => sum + r.totalValue, 0) / records.length : 0,
+    additionalMetrics: {
+      averageCost: records.length > 0 ? records.reduce((sum, r) => sum + r.unitCost, 0) / records.length : 0
+    }
+  }
+
+  return {
+    title: 'Inventory Valuation Report',
+    subtitle: 'Detailed inventory valuation by costing method',
+    generatedAt: new Date(),
+    filters,
+    summary,
+    records
+  }
+}
+
+async function generateLowStockReport(filters: ReportFilters): Promise<ReportData> {
+  const whereClause: {
+    warehouseId?: string
+    item?: { supplierId?: string; reorderLevel: { not: null } }
+  } = {
+    item: { reorderLevel: { not: null } }
+  }
+
+  if (filters.warehouseId !== 'all') {
+    whereClause.warehouseId = filters.warehouseId
+  }
+
+  if (filters.supplierId !== 'all') {
+    whereClause.item = {
+      reorderLevel: { not: null },
+      supplierId: filters.supplierId
+    }
+  }
+
+  const inventory = await prisma.currentInventory.findMany({
+    where: whereClause,
+    include: {
+      item: {
+        include: {
+          supplier: { select: { name: true } }
+        }
+      },
+      warehouse: { select: { name: true } }
+    }
+  })
+
+  const lowStockItems = inventory.filter(inv => 
+    inv.item.reorderLevel && Number(inv.quantity) <= Number(inv.item.reorderLevel)
+  )
+
+  const records: InventoryReportRecord[] = lowStockItems.map(inv => ({
+    itemCode: inv.item.itemCode,
+    description: inv.item.description,
+    warehouse: inv.warehouse.name,
+    supplier: inv.item.supplier.name,
+    unitOfMeasure: inv.item.unitOfMeasure,
+    quantity: Number(inv.quantity),
+    unitCost: Number(inv.avgUnitCost),
+    totalValue: Number(inv.totalValue),
+    reorderLevel: Number(inv.item.reorderLevel),
+    standardCost: Number(inv.item.standardCost),
+    stockStatus: Number(inv.quantity) === 0 ? 'OUT_OF_STOCK' : 'LOW_STOCK'
+  }))
+
+  const summary: ReportSummary = {
+    totalRecords: records.length,
+    totalQuantity: records.reduce((sum, r) => sum + r.quantity, 0),
+    totalValue: records.reduce((sum, r) => sum + r.totalValue, 0),
+    averageValue: records.length > 0 ? records.reduce((sum, r) => sum + r.totalValue, 0) / records.length : 0,
+    additionalMetrics: {
+      lowStockCount: records.filter(r => r.stockStatus === 'LOW_STOCK').length,
+      outOfStockCount: records.filter(r => r.stockStatus === 'OUT_OF_STOCK').length
+    }
+  }
+
+  return {
+    title: 'Low Stock Alert Report',
+    subtitle: 'Items requiring immediate attention',
+    generatedAt: new Date(),
+    filters,
+    summary,
+    records
+  }
+}
+
+async function generateStockMovementReport(filters: ReportFilters): Promise<ReportData> {
+  const whereClause: {
+    warehouseId?: string
+    createdAt?: { gte?: Date; lte?: Date }
+  } = {}
+
+  if (filters.warehouseId !== 'all') {
+    whereClause.warehouseId = filters.warehouseId
+  }
+
+  if (filters.dateFrom || filters.dateTo) {
+    whereClause.createdAt = {}
+    if (filters.dateFrom) {
+      whereClause.createdAt.gte = new Date(filters.dateFrom)
+    }
+    if (filters.dateTo) {
+      whereClause.createdAt.lte = new Date(filters.dateTo)
+    }
+  }
+
+  const movements = await prisma.inventoryMovement.findMany({
+    where: whereClause,
+    include: {
+      item: { select: { itemCode: true, description: true, unitOfMeasure: true } },
+      warehouse: { select: { name: true } }
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 1000
+  })
+
+  const records: MovementReportRecord[] = movements.map(movement => ({
+    itemCode: movement.item.itemCode,
+    description: movement.item.description,
+    warehouse: movement.warehouse.name,
+    quantity: Number(movement.quantity),
+    unitCost: Number(movement.unitCost || 0),
+    totalValue: Number(movement.totalValue || 0),
+    movementType: movement.movementType,
+    movementDate: movement.createdAt.toISOString().split('T')[0],
+    referenceId: movement.referenceId,
+    balanceQuantity: Number(movement.balanceQuantity),
+    balanceValue: Number(movement.balanceValue)
+  }))
+
+  const summary: ReportSummary = {
+    totalRecords: records.length,
+    totalQuantity: Math.abs(records.reduce((sum, r) => sum + r.quantity, 0)),
+    totalValue: Math.abs(records.reduce((sum, r) => sum + r.totalValue, 0)),
+    averageValue: records.length > 0 ? Math.abs(records.reduce((sum, r) => sum + r.totalValue, 0)) / records.length : 0
+  }
+
+  return {
+    title: 'Stock Movement Report',
+    subtitle: 'Complete inventory movement audit trail',
+    generatedAt: new Date(),
+    filters,
+    summary,
+    records
+  }
+}
 async function generateItemEntryReport(filters: ReportFilters): Promise<ReportData> {
   const whereClause: {
     warehouseId?: string
@@ -224,66 +427,6 @@ async function generateItemEntryReport(filters: ReportFilters): Promise<ReportDa
   }
 }
 
-async function generateStockMovementReport(filters: ReportFilters): Promise<ReportData> {
-  const whereClause: {
-    warehouseId?: string
-    createdAt?: { gte?: Date; lte?: Date }
-  } = {}
-
-  if (filters.warehouseId !== 'all') {
-    whereClause.warehouseId = filters.warehouseId
-  }
-
-  if (filters.dateFrom || filters.dateTo) {
-    whereClause.createdAt = {}
-    if (filters.dateFrom) {
-      whereClause.createdAt.gte = new Date(filters.dateFrom)
-    }
-    if (filters.dateTo) {
-      whereClause.createdAt.lte = new Date(filters.dateTo)
-    }
-  }
-
-  const movements = await prisma.inventoryMovement.findMany({
-    where: whereClause,
-    include: {
-      item: { select: { itemCode: true, description: true, unitOfMeasure: true } },
-      warehouse: { select: { name: true } }
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 1000
-  })
-
-  const records: MovementReportRecord[] = movements.map(movement => ({
-    itemCode: movement.item.itemCode,
-    description: movement.item.description,
-    warehouse: movement.warehouse.name,
-    quantity: Number(movement.quantity),
-    unitCost: Number(movement.unitCost || 0),
-    totalValue: Number(movement.totalValue || 0),
-    movementType: movement.movementType,
-    movementDate: movement.createdAt.toISOString().split('T')[0],
-    referenceId: movement.referenceId,
-    balanceQuantity: Number(movement.balanceQuantity),
-    balanceValue: Number(movement.balanceValue)
-  }))
-
-  const summary: ReportSummary = {
-    totalRecords: records.length,
-    totalQuantity: Math.abs(records.reduce((sum, r) => sum + r.quantity, 0)),
-    totalValue: Math.abs(records.reduce((sum, r) => sum + r.totalValue, 0)),
-    averageValue: records.length > 0 ? Math.abs(records.reduce((sum, r) => sum + r.totalValue, 0)) / records.length : 0
-  }
-
-  return {
-    title: 'Stock Movement Report',
-    subtitle: 'Complete inventory movement audit trail',
-    generatedAt: new Date(),
-    filters,
-    summary,
-    records
-  }
-}
 
 async function generateTransferReport(filters: ReportFilters): Promise<ReportData> {
   const whereClause: {
@@ -426,75 +569,6 @@ async function generateWithdrawalReport(filters: ReportFilters): Promise<ReportD
   }
 }
 
-async function generateLowStockReport(filters: ReportFilters): Promise<ReportData> {
-  const whereClause: {
-    warehouseId?: string
-    item?: { supplierId?: string; reorderLevel: { not: null } }
-  } = {
-    item: { reorderLevel: { not: null } }
-  }
-
-  if (filters.warehouseId !== 'all') {
-    whereClause.warehouseId = filters.warehouseId
-  }
-
-  if (filters.supplierId !== 'all') {
-    whereClause.item = {
-      reorderLevel: { not: null },
-      supplierId: filters.supplierId
-    }
-  }
-
-  const inventory = await prisma.currentInventory.findMany({
-    where: whereClause,
-    include: {
-      item: {
-        include: {
-          supplier: { select: { name: true } }
-        }
-      },
-      warehouse: { select: { name: true } }
-    }
-  })
-
-  const lowStockItems = inventory.filter(inv => 
-    inv.item.reorderLevel && Number(inv.quantity) <= Number(inv.item.reorderLevel)
-  )
-
-  const records: InventoryReportRecord[] = lowStockItems.map(inv => ({
-    itemCode: inv.item.itemCode,
-    description: inv.item.description,
-    warehouse: inv.warehouse.name,
-    supplier: inv.item.supplier.name,
-    unitOfMeasure: inv.item.unitOfMeasure,
-    quantity: Number(inv.quantity),
-    unitCost: Number(inv.avgUnitCost),
-    totalValue: Number(inv.totalValue),
-    reorderLevel: Number(inv.item.reorderLevel),
-    standardCost: Number(inv.item.standardCost),
-    stockStatus: Number(inv.quantity) === 0 ? 'OUT_OF_STOCK' : 'LOW_STOCK'
-  }))
-
-  const summary: ReportSummary = {
-    totalRecords: records.length,
-    totalQuantity: records.reduce((sum, r) => sum + r.quantity, 0),
-    totalValue: records.reduce((sum, r) => sum + r.totalValue, 0),
-    averageValue: records.length > 0 ? records.reduce((sum, r) => sum + r.totalValue, 0) / records.length : 0,
-    additionalMetrics: {
-      lowStockCount: records.filter(r => r.stockStatus === 'LOW_STOCK').length,
-      outOfStockCount: records.filter(r => r.stockStatus === 'OUT_OF_STOCK').length
-    }
-  }
-
-  return {
-    title: 'Low Stock Alert Report',
-    subtitle: 'Items requiring immediate attention',
-    generatedAt: new Date(),
-    filters,
-    summary,
-    records
-  }
-}
 
 async function generateCostAnalysisReport(filters: ReportFilters): Promise<ReportData> {
   const whereClause: {
@@ -681,79 +755,6 @@ async function generateSupplierPerformanceReport(filters: ReportFilters): Promis
   return {
     title: 'Supplier Performance Report',
     subtitle: 'Supplier delivery and cost performance analysis',
-    generatedAt: new Date(),
-    filters,
-    summary,
-    records
-  }
-}
-
-async function generateInventoryValuationReport(filters: ReportFilters): Promise<ReportData> {
-  const whereClause: {
-    warehouseId?: string
-    item?: { supplierId?: string }
-  } = {}
-
-  if (filters.warehouseId !== 'all') {
-    whereClause.warehouseId = filters.warehouseId
-  }
-
-  if (filters.supplierId !== 'all') {
-    whereClause.item = { supplierId: filters.supplierId }
-  }
-
-  const inventory = await prisma.currentInventory.findMany({
-    where: whereClause,
-    include: {
-      item: {
-        include: {
-          supplier: { select: { name: true } }
-        }
-      },
-      warehouse: { select: { name: true } }
-    },
-    orderBy: [{ totalValue: 'desc' }]
-  })
-
-  const records: InventoryReportRecord[] = inventory.map(inv => {
-    const quantity = Number(inv.quantity)
-    const reorderLevel = inv.item.reorderLevel ? Number(inv.item.reorderLevel) : undefined
-    
-    let stockStatus: 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK' = 'IN_STOCK'
-    if (quantity === 0) {
-      stockStatus = 'OUT_OF_STOCK'
-    } else if (reorderLevel && quantity <= reorderLevel) {
-      stockStatus = 'LOW_STOCK'
-    }
-
-    return {
-      itemCode: inv.item.itemCode,
-      description: inv.item.description,
-      warehouse: inv.warehouse.name,
-      supplier: inv.item.supplier.name,
-      unitOfMeasure: inv.item.unitOfMeasure,
-      quantity,
-      unitCost: Number(inv.avgUnitCost),
-      totalValue: Number(inv.totalValue),
-      reorderLevel,
-      standardCost: Number(inv.item.standardCost),
-      stockStatus
-    }
-  })
-
-  const summary: ReportSummary = {
-    totalRecords: records.length,
-    totalQuantity: records.reduce((sum, r) => sum + r.quantity, 0),
-    totalValue: records.reduce((sum, r) => sum + r.totalValue, 0),
-    averageValue: records.length > 0 ? records.reduce((sum, r) => sum + r.totalValue, 0) / records.length : 0,
-    additionalMetrics: {
-      averageCost: records.length > 0 ? records.reduce((sum, r) => sum + r.unitCost, 0) / records.length : 0
-    }
-  }
-
-  return {
-    title: 'Inventory Valuation Report',
-    subtitle: 'Detailed inventory valuation by costing method',
     generatedAt: new Date(),
     filters,
     summary,

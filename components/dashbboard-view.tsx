@@ -145,8 +145,8 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
         </Button>
       </div>
 
-      {/* Key Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Key Metrics Grid - Now 5 columns including Stock Alert */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <Card className="border-0 shadow-sm bg-white">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -217,43 +217,54 @@ export function DashboardView({ initialStats }: DashboardViewProps) {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Critical Alerts Section */}
-      {stats.inventory.lowStockItems > 0 && (
-        <Card className="border-0 shadow-sm bg-white border-l-4 border-l-amber-400">
-          <CardHeader>
-            <div className="flex items-center space-x-3">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              <div>
-                <h3 className="font-semibold text-slate-900">Stock Level Alert</h3>
-                <p className="text-sm text-slate-600">Items requiring immediate attention</p>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-amber-600">{stats.inventory.lowStockItems}</p>
-                  <p className="text-xs text-slate-600">Low Stock</p>
+        {/* Stock Level Alert - Now in the same row */}
+        {stats.inventory.lowStockItems > 0 && (
+          <Card className="border-0 shadow-sm bg-white border-l-4 border-l-amber-400">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-slate-600">Stock Alert</p>
+                  <p className="text-xl font-bold text-amber-600">
+                    {stats.inventory.lowStockItems + stats.inventory.outOfStockItems}
+                  </p>
+                  <p className="text-xs text-slate-500">{stats.inventory.lowStockItems} low • {stats.inventory.outOfStockItems} out</p>
                 </div>
-                <Separator orientation="vertical" className="h-12" />
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-red-600">{stats.inventory.outOfStockItems}</p>
-                  <p className="text-xs text-slate-600">Out of Stock</p>
+                <div className="flex flex-col items-center space-y-2">
+                  <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <Link href="/dashboard/inventory/low-stock">
+                    <Button variant="ghost" size="sm">
+                      <ArrowUpRight className="w-4 h-4" />
+                    </Button>
+                  </Link>
                 </div>
               </div>
-              <Link href="/dashboard/inventory/low-stock">
-                <Button variant="outline" size="sm">
-                  View Details
-                  <ArrowUpRight className="w-3 h-3 ml-1" />
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Placeholder card when no stock alerts */}
+        {stats.inventory.lowStockItems === 0 && (
+          <Card className="border-0 shadow-sm bg-white">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-slate-600">Stock Status</p>
+                  <p className="text-xl font-bold text-emerald-600">
+                    All Good
+                  </p>
+                  <p className="text-xs text-slate-500">No stock alerts</p>
+                </div>
+                <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-emerald-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Operations Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

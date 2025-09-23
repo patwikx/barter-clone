@@ -109,6 +109,7 @@ model UserPermission {
 }
 
 // Core Item Management
+// Updated Item model with category relationship
 model Item {
   id            String  @id @default(uuid())
   itemCode      String  @unique
@@ -122,12 +123,16 @@ model Item {
   maxLevel      Decimal?          @db.Decimal(10, 4)
   minLevel      Decimal?          @db.Decimal(10, 4)
 
+  // Category relationship - ADDED
+  category   ItemCategory? @relation(fields: [categoryId], references: [id])
+  categoryId String?
+
   // Relationships
   supplier   Supplier @relation(fields: [supplierId], references: [id])
   supplierId String
 
   // Inventory tracking
-  itemEntries        ItemEntry[] // REPLACED purchaseItems with direct entries
+  itemEntries        ItemEntry[]
   inventoryMovements InventoryMovement[]
   withdrawalItems    WithdrawalItem[]
   transferItems      TransferItem[]
@@ -666,6 +671,12 @@ enum Permission {
   DELETE_ITEMS
   VIEW_ITEMS
 
+  // Category Management - ADDED
+  CREATE_CATEGORIES
+  UPDATE_CATEGORIES
+  DELETE_CATEGORIES
+  VIEW_CATEGORIES
+
   // Item Entry (Direct Purchase)
   CREATE_ITEM_ENTRIES
   VIEW_ITEM_ENTRIES
@@ -719,4 +730,30 @@ enum WarehouseRole {
   SUPERVISOR
   CLERK
   VIEWER
+}
+
+// Add this new model for Item Categories
+model ItemCategory {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  code        String? @unique // Optional category code like "RAW", "FIN", "CONS"
+
+  // Hierarchical categories (optional - for subcategories)
+  parentCategory   ItemCategory?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
+  parentCategoryId String?
+  childCategories  ItemCategory[] @relation("CategoryHierarchy")
+
+  // Category settings
+  isActive          Boolean           @default(true)
+  requiresApproval  Boolean           @default(false) // Future use if you want category-specific approvals
+  defaultCostMethod CostingMethodType @default(WEIGHTED_AVERAGE)
+
+  // Relationships
+  items Item[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("item_categories")
 }
